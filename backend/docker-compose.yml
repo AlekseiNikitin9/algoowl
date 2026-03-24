@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ── PostgreSQL ────────────────────────────────────
   postgres:
@@ -39,6 +37,21 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Execution Worker ──────────────────────────────
+  exec-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock  # Access to Docker daemon for spawning sandbox containers
     depends_on:
       postgres:
         condition: service_healthy
