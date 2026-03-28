@@ -23,18 +23,18 @@ void main() {
     ),
   );
 
-  runApp(const ProviderScope(child: AlgoOwlApp()));
+  runApp(const ProviderScope(child: CodekataApp()));
 }
 
-class AlgoOwlApp extends ConsumerWidget {
-  const AlgoOwlApp({super.key});
+class CodekataApp extends ConsumerWidget {
+  const CodekataApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
-      title: 'AlgoOwl',
+      title: 'Codekata',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

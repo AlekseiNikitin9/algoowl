@@ -6,6 +6,7 @@ class UserProfile {
   final int dailyGoalMinutes;
   final String experienceLevel; // beginner, intermediate, advanced
   final String focus; // interview, learn, both
+  final String hearAboutUs; // tiktok, instagram, linkedin, twitter, youtube, school, friend, other
 
   const UserProfile({
     required this.id,
@@ -15,6 +16,7 @@ class UserProfile {
     this.dailyGoalMinutes = 10,
     this.experienceLevel = 'beginner',
     this.focus = 'both',
+    this.hearAboutUs = '',
   });
 
   UserProfile copyWith({
@@ -24,6 +26,7 @@ class UserProfile {
     int? dailyGoalMinutes,
     String? experienceLevel,
     String? focus,
+    String? hearAboutUs,
   }) {
     return UserProfile(
       id: id,
@@ -33,6 +36,7 @@ class UserProfile {
       dailyGoalMinutes: dailyGoalMinutes ?? this.dailyGoalMinutes,
       experienceLevel: experienceLevel ?? this.experienceLevel,
       focus: focus ?? this.focus,
+      hearAboutUs: hearAboutUs ?? this.hearAboutUs,
     );
   }
 }

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 
-/// Animated progress bar with optional notch marks.
+/// Animated progress bar with red→yellow→green gradient based on progress.
 class OwlProgressBar extends StatelessWidget {
   final double progress; // 0.0–1.0
   final double height;
@@ -16,8 +15,31 @@ class OwlProgressBar extends StatelessWidget {
     this.showNotches = false,
   });
 
+  /// Interpolates red→yellow→green based on progress (0→0.5→1).
+  static Color _progressColor(double t) {
+    final clamped = t.clamp(0.0, 1.0);
+    if (clamped <= 0.5) {
+      // red → yellow
+      return Color.lerp(
+        const Color(0xFFFF4B4B),
+        const Color(0xFFF5A623),
+        clamped / 0.5,
+      )!;
+    } else {
+      // yellow → green
+      return Color.lerp(
+        const Color(0xFFF5A623),
+        const Color(0xFF58CC02),
+        (clamped - 0.5) / 0.5,
+      )!;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final color = _progressColor(progress);
+    final endColor = Color.lerp(color, Colors.white, 0.25)!;
+
     return SizedBox(
       height: height,
       child: ClipRRect(
@@ -39,8 +61,8 @@ class OwlProgressBar extends StatelessWidget {
                   curve: Curves.easeOutQuart,
                   width: constraints.maxWidth * progress.clamp(0, 1),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, Color(0xFF3DA0FF)],
+                    gradient: LinearGradient(
+                      colors: [color, endColor],
                     ),
                     borderRadius: BorderRadius.circular(AppRadius.full),
                   ),

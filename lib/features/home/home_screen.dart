@@ -7,6 +7,8 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/progress_bar.dart';
 import '../../core/widgets/skill_tree_node.dart';
+import 'dart:math' as math;
+
 import '../../models/category.dart';
 import '../../providers/app_providers.dart';
 
@@ -157,15 +159,14 @@ class HomeScreen extends ConsumerWidget {
                   return Column(
                     children: [
                       if (index > 0)
-                        Container(
-                          width: 2,
-                          height: 32,
-                          color: category.status == CategoryStatus.locked
-                              ? AppColors.border
-                              : AppColors.primary.withValues(alpha: 0.3),
+                        _ZigzagConnector(
+                          fromIndex: index - 1,
+                          toIndex: index,
+                          isUnlocked: category.status != CategoryStatus.locked,
                         ),
                       SkillTreeNode(
                         category: category,
+                        index: index,
                         onTap: () =>
                             context.push('/practice/${category.slug}'),
                       ),
@@ -190,6 +191,120 @@ class HomeScreen extends ConsumerWidget {
         .where((c) => c.status == CategoryStatus.current)
         .firstOrNull;
   }
+}
+
+// ── Zigzag connector between nodes ───────────────────────────
+/// Draws a curved line from the bottom-center of node [fromIndex] to the
+/// top-center of node [toIndex], following their zigzag horizontal offsets.
+class _ZigzagConnector extends StatelessWidget {
+  final int fromIndex;
+  final int toIndex;
+  final bool isUnlocked;
+
+  const _ZigzagConnector({
+    required this.fromIndex,
+    required this.toIndex,
+    required this.isUnlocked,
+  });
+
+  static double _offsetFor(int index, double maxOffset) {
+    switch (index % 4) {
+      case 0:
+        return 0;
+      case 1:
+        return maxOffset;
+      case 2:
+        return 0;
+      case 3:
+        return -maxOffset;
+      default:
+        return 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final maxOffset = screenWidth * 0.22;
+    final fromX = _offsetFor(fromIndex, maxOffset);
+    final toX = _offsetFor(toIndex, maxOffset);
+
+    return SizedBox(
+      height: 40,
+      child: CustomPaint(
+        painter: _CurvedLinePainter(
+          fromX: fromX,
+          toX: toX,
+          color: isUnlocked
+              ? AppColors.primary.withValues(alpha: 0.35)
+              : AppColors.border,
+        ),
+        size: Size(screenWidth, 40),
+      ),
+    );
+  }
+}
+
+class _CurvedLinePainter extends CustomPainter {
+  final double fromX;
+  final double toX;
+  final Color color;
+
+  _CurvedLinePainter({
+    required this.fromX,
+    required this.toX,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final centerX = size.width / 2;
+    final start = Offset(centerX + fromX, 0);
+    final end = Offset(centerX + toX, size.height);
+
+    // Cubic bezier for a smooth curve
+    final path = Path()
+      ..moveTo(start.dx, start.dy)
+      ..cubicTo(
+        start.dx,
+        size.height * 0.4,
+        end.dx,
+        size.height * 0.6,
+        end.dx,
+        end.dy,
+      );
+
+    // Dashed line for locked nodes
+    if (color == AppColors.border) {
+      _drawDashed(canvas, path, paint);
+    } else {
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  void _drawDashed(Canvas canvas, Path path, Paint paint) {
+    const dashLength = 6.0;
+    const gapLength = 4.0;
+    final metrics = path.computeMetrics();
+    for (final metric in metrics) {
+      double distance = 0;
+      while (distance < metric.length) {
+        final end = math.min(distance + dashLength, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance += dashLength + gapLength;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CurvedLinePainter old) =>
+      old.fromX != fromX || old.toX != toX || old.color != color;
 }
 
 // ── Continue Learning Card ────────────────────────────────

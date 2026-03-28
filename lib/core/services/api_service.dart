@@ -17,7 +17,7 @@
 // Replace these stubs with real HTTP calls when the backend is ready.
 
 class ApiService {
-  static const String baseUrl = 'https://api.algoowl.com'; // placeholder
+  static const String baseUrl = 'https://api.codekata.app'; // placeholder
 
   // ── Auth ─────────────────────────────────────────────────
 

@@ -11,7 +11,7 @@ import '../../core/widgets/progress_bar.dart';
 import '../../models/problem.dart';
 import '../../providers/app_providers.dart';
 
-/// A lesson flow: concept card → quiz → code problem → results.
+/// A lesson flow: concept → quiz → input method choice → code editor.
 class LessonScreen extends ConsumerStatefulWidget {
   final String problemSlug;
 
@@ -22,9 +22,11 @@ class LessonScreen extends ConsumerStatefulWidget {
 }
 
 class _LessonScreenState extends ConsumerState<LessonScreen> {
-  int _step = 0; // 0=concept, 1=quiz, 2=go to editor
+  // Steps: 0=concept, 1=quiz, 2=input method, 3=go to editor
+  int _step = 0;
   int? _selectedAnswer;
   bool _answered = false;
+  String? _inputMethod; // 'manual' or 'autocompletion'
 
   late Problem _problem;
 
@@ -38,7 +40,8 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
     );
   }
 
-  double get _progress => (_step + 1) / 3;
+  // 4 steps total (0–3)
+  double get _progress => (_step + 1) / 4;
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +74,6 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
                 ],
               ),
             ),
-
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
@@ -103,6 +105,8 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
       case 1:
         return _buildQuiz();
       case 2:
+        return _buildInputMethodChoice();
+      case 3:
         return _buildCodePrompt();
       default:
         return const SizedBox.shrink();
@@ -117,7 +121,6 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: AppSpacing.space6),
-          // Concept illustration placeholder
           Center(
             child: Container(
               width: 160,
@@ -166,7 +169,6 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
   }
 
   Widget _buildQuiz() {
-    // Simple multiple-choice question about the concept
     final options = [
       'O(n²) — nested loops',
       'O(n) — hash map lookup',
@@ -185,7 +187,7 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
           Text('Quick Check', style: AppTypography.h2),
           const SizedBox(height: AppSpacing.space2),
           Text(
-            'What\'s the optimal time complexity for ${_problem.title}?',
+            "What's the optimal time complexity for ${_problem.title}?",
             style: AppTypography.bodyLg,
           ),
           const SizedBox(height: AppSpacing.space6),
@@ -194,8 +196,7 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
             final opt = entry.value;
             final isSelected = _selectedAnswer == i;
             final showCorrect = _answered && i == correctIndex;
-            final showWrong =
-                _answered && isSelected && i != correctIndex;
+            final showWrong = _answered && isSelected && i != correctIndex;
 
             Color borderColor = AppColors.border;
             Color bgColor = AppColors.surface;
@@ -229,9 +230,7 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
                   ),
                   child: Row(
                     children: [
-                      Expanded(
-                        child: Text(opt, style: AppTypography.body),
-                      ),
+                      Expanded(child: Text(opt, style: AppTypography.body)),
                       if (showCorrect)
                         const Icon(Icons.check_circle,
                             color: AppColors.success),
@@ -263,7 +262,113 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
     );
   }
 
+  // ── Input method choice (new step between quiz & editor) ─────
+  Widget _buildInputMethodChoice() {
+    final options = [
+      (
+        'manual',
+        'Enter code manually',
+        'Type your solution the way you would on a computer',
+        Icons.keyboard_rounded,
+      ),
+      (
+        'autocompletion',
+        'Use smart autocompletion',
+        'Build your solution step by step with guided suggestions',
+        Icons.auto_fix_high_rounded,
+      ),
+    ];
+
+    return Padding(
+      key: const ValueKey('input-method'),
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: AppSpacing.space6),
+          Text('How would you like to\nsolve this?', style: AppTypography.h1),
+          const SizedBox(height: AppSpacing.space2),
+          Text(
+            'Choose how you want to enter your solution.',
+            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.space8),
+          ...options.map((opt) {
+            final isSelected = _inputMethod == opt.$1;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.space3),
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _inputMethod = opt.$1);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(AppSpacing.space4),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primarySurface
+                        : AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    border: Border.all(
+                      color: isSelected ? AppColors.primary : AppColors.border,
+                      width: isSelected ? 2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                        ),
+                        child: Icon(
+                          opt.$4,
+                          color: isSelected
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.space3),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(opt.$2, style: AppTypography.bodyLg),
+                            const SizedBox(height: 2),
+                            Text(opt.$3, style: AppTypography.caption),
+                          ],
+                        ),
+                      ),
+                      if (isSelected)
+                        const Icon(Icons.check_circle,
+                            color: AppColors.primary, size: 24),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+          const Spacer(),
+          OwlButton(
+            label: 'Continue',
+            onPressed: _inputMethod != null
+                ? () => setState(() => _step = 3)
+                : null,
+          ),
+          const SizedBox(height: AppSpacing.space4),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCodePrompt() {
+    final isAutocompletion = _inputMethod == 'autocompletion';
     return Padding(
       key: const ValueKey('code-prompt'),
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
@@ -273,17 +378,23 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
           Container(
             width: 120,
             height: 120,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.primarySurface,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.code, size: 56, color: AppColors.primary),
+            child: Icon(
+              isAutocompletion ? Icons.auto_fix_high_rounded : Icons.code,
+              size: 56,
+              color: AppColors.primary,
+            ),
           ),
           const SizedBox(height: AppSpacing.space6),
           Text('Time to code!', style: AppTypography.h1),
           const SizedBox(height: AppSpacing.space3),
           Text(
-            'Solve "${_problem.title}" using the smart code editor.',
+            isAutocompletion
+                ? 'Smart autocompletion is ready. Build your solution with guided suggestions.'
+                : 'Open the editor and solve "${_problem.title}".',
             textAlign: TextAlign.center,
             style: AppTypography.body.copyWith(color: AppColors.textSecondary),
           ),

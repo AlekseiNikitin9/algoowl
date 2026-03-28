@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// AlgoOwl color tokens — sourced from Picasso's design doc.
-/// Electric blue identity, Duolingo gamification DNA.
+/// Codekata color tokens — sourced from Picasso's design doc.
+/// Electric blue identity, gamified DSA learning.
 abstract final class AppColors {
   // ── Primary — Electric Blue ──────────────────────────────
   static const primary = Color(0xFF1A8CFF);

@@ -336,12 +336,20 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
       ),
-      builder: (context) {
+      builder: (ctx) {
+        // Pad by system navbar height so nothing gets obscured
+        final bottomPadding = MediaQuery.of(ctx).viewPadding.bottom;
         return Padding(
-          padding: const EdgeInsets.all(AppSpacing.space6),
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.space6,
+            AppSpacing.space6,
+            AppSpacing.space6,
+            AppSpacing.space6 + bottomPadding,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -356,14 +364,14 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
               ),
               const SizedBox(height: AppSpacing.space4),
               Text(
-                'Think about using a hash map to store values you\'ve already seen. '
+                "Think about using a hash map to store values you've already seen. "
                 'For each element, check if target - current exists in the map.',
                 style: AppTypography.body,
               ),
               const SizedBox(height: AppSpacing.space6),
               OwlButton(
                 label: 'Got it',
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(ctx),
               ),
             ],
           ),

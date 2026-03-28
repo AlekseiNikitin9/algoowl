@@ -31,6 +31,8 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
       state = state.copyWith(dailyGoalMinutes: minutes);
   void setFocus(String focus) => state = state.copyWith(focus: focus);
   void setName(String name) => state = state.copyWith(name: name);
+  void setHearAboutUs(String source) =>
+      state = state.copyWith(hearAboutUs: source);
 }
 
 /// Categories for the skill tree.
