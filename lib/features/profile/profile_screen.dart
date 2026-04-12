@@ -12,6 +12,7 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProfileProvider);
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       body: SafeArea(
@@ -26,7 +27,7 @@ class ProfileScreen extends ConsumerWidget {
               // Avatar
               CircleAvatar(
                 radius: 48,
-                backgroundColor: AppColors.primaryLight,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.15),
                 child: const Icon(
                   Icons.person,
                   size: 48,
@@ -37,7 +38,9 @@ class ProfileScreen extends ConsumerWidget {
               Text(user.name, style: AppTypography.h1),
               Text(
                 user.experienceLevel.toUpperCase(),
-                style: AppTypography.caption,
+                style: AppTypography.caption.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
               ),
 
               const SizedBox(height: AppSpacing.space8),
@@ -84,9 +87,10 @@ class ProfileScreen extends ConsumerWidget {
                     onTap: () => _showDailyGoalDialog(context, ref, user.dailyGoalMinutes),
                   ),
                   _SettingsTile(
-                    icon: Icons.dark_mode_outlined,
-                    label: 'Dark Mode',
-                    onTap: () => _showComingSoon(context, 'Dark mode'),
+                    icon: Icons.palette_outlined,
+                    label: 'Theme',
+                    trailing: _themeModeLabel(ref.watch(themeModeProvider)),
+                    onTap: () => _showThemeDialog(context, ref),
                   ),
                   _SettingsTile(
                     icon: Icons.notifications_outlined,
@@ -120,6 +124,60 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  String _themeModeLabel(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'Light';
+      case ThemeMode.dark:
+        return 'Dark';
+      case ThemeMode.system:
+        return 'System';
+    }
+  }
+
+  // ── Theme dialog ───────────────────────────────────────────
+  void _showThemeDialog(BuildContext context, WidgetRef ref) {
+    final current = ref.read(themeModeProvider);
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return SimpleDialog(
+          title: const Text('Theme'),
+          children: [
+            _ThemeOption(
+              icon: Icons.light_mode,
+              label: 'Light',
+              isSelected: current == ThemeMode.light,
+              onTap: () {
+                ref.read(themeModeProvider.notifier).state = ThemeMode.light;
+                Navigator.pop(ctx);
+              },
+            ),
+            _ThemeOption(
+              icon: Icons.dark_mode,
+              label: 'Dark',
+              isSelected: current == ThemeMode.dark,
+              onTap: () {
+                ref.read(themeModeProvider.notifier).state = ThemeMode.dark;
+                Navigator.pop(ctx);
+              },
+            ),
+            _ThemeOption(
+              icon: Icons.phone_android,
+              label: 'System',
+              isSelected: current == ThemeMode.system,
+              onTap: () {
+                ref.read(themeModeProvider.notifier).state = ThemeMode.system;
+                Navigator.pop(ctx);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // ── Daily goal dialog ───────────────────────────────────────
   void _showDailyGoalDialog(BuildContext context, WidgetRef ref, int current) {
     final controller = TextEditingController(text: current.toString());
@@ -138,8 +196,9 @@ class ProfileScreen extends ConsumerWidget {
                 children: [
                   Text(
                     'How many minutes per day?',
-                    style: AppTypography.body
-                        .copyWith(color: AppColors.textSecondary),
+                    style: AppTypography.body.copyWith(
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   // Preset chips
@@ -153,11 +212,11 @@ class ProfileScreen extends ConsumerWidget {
                           setDialogState(
                               () => controller.text = mins.toString());
                         },
-                        selectedColor: AppColors.primarySurface,
+                        selectedColor: AppColors.primary.withValues(alpha: 0.15),
                         side: BorderSide(
                           color: controller.text == mins.toString()
                               ? AppColors.primary
-                              : AppColors.border,
+                              : Theme.of(ctx).colorScheme.outline,
                         ),
                       );
                     }).toList(),
@@ -203,12 +262,12 @@ class ProfileScreen extends ConsumerWidget {
   void _showAboutSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
       ),
       builder: (ctx) {
         final bottomPadding = MediaQuery.of(ctx).viewPadding.bottom;
+        final cs = Theme.of(ctx).colorScheme;
         return Padding(
           padding: EdgeInsets.fromLTRB(
             AppSpacing.space6,
@@ -225,8 +284,8 @@ class ProfileScreen extends ConsumerWidget {
                   Container(
                     width: 40,
                     height: 40,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primarySurface,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.code,
@@ -238,14 +297,15 @@ class ProfileScreen extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpacing.space4),
               Text(
-                'Master DSA and crush your coding interviews — one bite-sized lesson at a time.',
-                style: AppTypography.body
-                    .copyWith(color: AppColors.textSecondary),
+                'Master DSA and crush your coding interviews - one bite-sized lesson at a time.',
+                style: AppTypography.body.copyWith(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: AppSpacing.space4),
               Text(
-                'Version 0.1.0 — Early Access',
-                style: AppTypography.caption,
+                'Version 0.1.0 - Early Access',
+                style: AppTypography.caption.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -258,7 +318,7 @@ class ProfileScreen extends ConsumerWidget {
   void _showComingSoon(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$feature — coming soon'),
+        content: Text('$feature - coming soon'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),
@@ -283,7 +343,6 @@ class ProfileScreen extends ConsumerWidget {
             ),
             onPressed: () {
               Navigator.pop(ctx);
-              // Reset onboarding → back to onboarding flow
               ref.read(onboardingCompleteProvider.notifier).state = false;
             },
             child: const Text('Sign Out'),
@@ -295,6 +354,36 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 // ── Shared widgets ────────────────────────────────────────────
+
+class _ThemeOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ThemeOption({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SimpleDialogOption(
+      onPressed: onTap,
+      child: Row(
+        children: [
+          Icon(icon, color: isSelected ? AppColors.primary : null),
+          const SizedBox(width: 16),
+          Expanded(child: Text(label, style: AppTypography.bodyLg)),
+          if (isSelected)
+            const Icon(Icons.check, color: AppColors.primary, size: 20),
+        ],
+      ),
+    );
+  }
+}
 
 class _StatTile extends StatelessWidget {
   final String label;
@@ -311,6 +400,7 @@ class _StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         Container(
@@ -324,7 +414,10 @@ class _StatTile extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.space2),
         Text(value, style: AppTypography.h2),
-        Text(label, style: AppTypography.caption),
+        Text(
+          label,
+          style: AppTypography.caption.copyWith(color: cs.onSurfaceVariant),
+        ),
       ],
     );
   }
@@ -337,11 +430,12 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: cs.outline),
       ),
       child: Column(children: children),
     );
@@ -363,6 +457,7 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -373,15 +468,20 @@ class _SettingsTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, color: AppColors.textSecondary, size: 22),
+            Icon(icon, color: cs.onSurfaceVariant, size: 22),
             const SizedBox(width: AppSpacing.space3),
             Expanded(child: Text(label, style: AppTypography.bodyLg)),
             if (trailing != null)
-              Text(trailing!, style: AppTypography.caption),
+              Text(
+                trailing!,
+                style: AppTypography.caption.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
             const SizedBox(width: AppSpacing.space1),
-            const Icon(
+            Icon(
               Icons.chevron_right,
-              color: AppColors.textDisabled,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.5),
               size: 20,
             ),
           ],

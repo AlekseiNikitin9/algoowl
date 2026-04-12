@@ -28,8 +28,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   String? _focus;
   String? _hearAboutUs;
   final _hearAboutUsOtherController = TextEditingController();
+  ThemeMode _selectedThemeMode = ThemeMode.system;
 
-  static const int _totalPages = 5;
+  static const int _totalPages = 6;
 
   @override
   void dispose() {
@@ -40,6 +41,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _next() {
+    // Dismiss keyboard before transitioning to prevent overflow
+    FocusScope.of(context).unfocus();
     if (_currentPage < _totalPages - 1) {
       _controller.nextPage(
         duration: const Duration(milliseconds: 350),
@@ -51,6 +54,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _back() {
+    FocusScope.of(context).unfocus();
     if (_currentPage > 0) {
       _controller.previousPage(
         duration: const Duration(milliseconds: 350),
@@ -59,12 +63,25 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  void _complete() {
+  Future<void> _complete() async {
     final notifier = ref.read(userProfileProvider.notifier);
     if (_experienceLevel != null) notifier.setExperienceLevel(_experienceLevel!);
     if (_dailyGoal != null) notifier.setDailyGoal(_dailyGoal!);
     if (_focus != null) notifier.setFocus(_focus!);
     if (_hearAboutUs != null) notifier.setHearAboutUs(_hearAboutUs!);
+
+    // Persist preferences to backend (creates device account if needed)
+    final api = ref.read(apiServiceProvider);
+    try {
+      await api.completeOnboarding(
+        dailyGoalMinutes: _dailyGoal ?? 10,
+        experienceLevel: _experienceLevel ?? 'beginner',
+        focus: _focus ?? 'both',
+      );
+    } catch (_) {
+      // Backend unavailable - continue in local-only mode
+    }
+
     ref.read(onboardingCompleteProvider.notifier).state = true;
   }
 
@@ -87,6 +104,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           return _hearAboutUsOtherController.text.trim().isNotEmpty;
         }
         return _hearAboutUs != null;
+      case 5:
+        return true; // Theme - always valid (pre-selected)
       default:
         return false;
     }
@@ -94,6 +113,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -112,10 +133,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     child: _currentPage > 0
                         ? GestureDetector(
                             onTap: _back,
-                            child: const Icon(
+                            child: Icon(
                               Icons.arrow_back_ios_new,
                               size: 20,
-                              color: AppColors.textSecondary,
+                              color: cs.onSurfaceVariant,
                             ),
                           )
                         : null,
@@ -129,7 +150,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                           dotHeight: 8,
                           dotWidth: 8,
                           activeDotColor: AppColors.primary,
-                          dotColor: AppColors.border,
+                          dotColor: cs.outline,
                           spacing: 8,
                         ),
                       ),
@@ -150,6 +171,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   _buildDailyGoal(),
                   _buildFocus(),
                   _buildHearAboutUs(),
+                  _buildThemeSelection(),
                 ],
               ),
             ),
@@ -173,6 +195,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // ── Welcome ─────────────────────────────────────────────────
   Widget _buildWelcome() {
+    final cs = Theme.of(context).colorScheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
       child: Column(
@@ -181,19 +205,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           Container(
             width: 120,
             height: 120,
-            decoration: const BoxDecoration(
-              color: AppColors.primarySurface,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.code, size: 60, color: AppColors.primary),
           ),
           const SizedBox(height: AppSpacing.space8),
-          Text('Welcome to CodeSpark', style: AppTypography.h1),
+          Text('Welcome to Codekata', style: AppTypography.h1),
           const SizedBox(height: AppSpacing.space3),
           Text(
-            'Master DSA and crush your coding interviews — one bite-sized lesson at a time.',
+            'Master DSA and crush your coding interviews - one bite-sized lesson at a time.',
             textAlign: TextAlign.center,
-            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+            style: AppTypography.body.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),
@@ -217,133 +241,138 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // ── Daily Goal ───────────────────────────────────────────────
   Widget _buildDailyGoal() {
+    final cs = Theme.of(context).colorScheme;
     final options = [
       ('5', '5 min', 'Quick review'),
       ('10', '10 min', 'Steady progress'),
       ('20', '20 min', 'Serious grind'),
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: AppSpacing.space12),
-          Text('Set your daily goal', style: AppTypography.h1),
-          const SizedBox(height: AppSpacing.space2),
-          Text(
-            'How many minutes do you want to grind each day?',
-            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: AppSpacing.space8),
-          // Preset options
-          ...options.map((opt) {
-            final isSelected = !_customGoalSelected && _dailyGoal?.toString() == opt.$1;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.space3),
-              child: _OptionTile(
-                label: opt.$2,
-                description: opt.$3,
-                isSelected: isSelected,
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: AppSpacing.space12),
+            Text('Set your daily goal', style: AppTypography.h1),
+            const SizedBox(height: AppSpacing.space2),
+            Text(
+              'How many minutes do you want to grind each day?',
+              style: AppTypography.body.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: AppSpacing.space8),
+            // Preset options
+            ...options.map((opt) {
+              final isSelected = !_customGoalSelected && _dailyGoal?.toString() == opt.$1;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.space3),
+                child: _OptionTile(
+                  label: opt.$2,
+                  description: opt.$3,
+                  isSelected: isSelected,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _dailyGoal = int.parse(opt.$1);
+                      _customGoalSelected = false;
+                    });
+                  },
+                ),
+              );
+            }),
+            // Custom option
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.space8),
+              child: GestureDetector(
                 onTap: () {
                   HapticFeedback.selectionClick();
                   setState(() {
-                    _dailyGoal = int.parse(opt.$1);
-                    _customGoalSelected = false;
+                    _customGoalSelected = true;
+                    _dailyGoal = null;
                   });
                 },
-              ),
-            );
-          }),
-          // Custom option
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.space3),
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                setState(() {
-                  _customGoalSelected = true;
-                  _dailyGoal = null;
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.all(AppSpacing.space4),
-                decoration: BoxDecoration(
-                  color: _customGoalSelected
-                      ? AppColors.primarySurface
-                      : AppColors.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  border: Border.all(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(AppSpacing.space4),
+                  decoration: BoxDecoration(
                     color: _customGoalSelected
-                        ? AppColors.primary
-                        : AppColors.border,
-                    width: _customGoalSelected ? 2 : 1,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Custom', style: AppTypography.bodyLg),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Enter your own goal',
-                                style: AppTypography.caption,
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_customGoalSelected)
-                          const Icon(Icons.check_circle,
-                              color: AppColors.primary, size: 24),
-                      ],
+                        ? AppColors.primary.withValues(alpha: 0.1)
+                        : cs.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    border: Border.all(
+                      color: _customGoalSelected
+                          ? AppColors.primary
+                          : cs.outline,
+                      width: _customGoalSelected ? 2 : 1,
                     ),
-                    if (_customGoalSelected) ...[
-                      const SizedBox(height: AppSpacing.space3),
-                      TextField(
-                        controller: _customGoalController,
-                        keyboardType: TextInputType.number,
-                        autofocus: true,
-                        decoration: InputDecoration(
-                          hintText: 'e.g. 15',
-                          suffixText: 'min',
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Custom', style: AppTypography.bodyLg),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Enter your own goal',
+                                  style: AppTypography.caption.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppRadius.md),
-                            borderSide:
-                                const BorderSide(color: AppColors.border),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppRadius.md),
-                            borderSide:
-                                const BorderSide(color: AppColors.primary),
-                          ),
-                        ),
-                        onChanged: (_) => setState(() {}),
-                        onSubmitted: (v) {
-                          final val = int.tryParse(v.trim());
-                          if (val != null && val > 0) {
-                            setState(() => _dailyGoal = val);
-                          }
-                        },
+                          if (_customGoalSelected)
+                            const Icon(Icons.check_circle,
+                                color: AppColors.primary, size: 24),
+                        ],
                       ),
+                      if (_customGoalSelected) ...[
+                        const SizedBox(height: AppSpacing.space3),
+                        TextField(
+                          controller: _customGoalController,
+                          keyboardType: TextInputType.number,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            hintText: 'e.g. 15',
+                            suffixText: 'min',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                              borderSide: BorderSide(color: cs.outline),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                              borderSide:
+                                  const BorderSide(color: AppColors.primary),
+                            ),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (v) {
+                            final val = int.tryParse(v.trim());
+                            if (val != null && val > 0) {
+                              setState(() => _dailyGoal = val);
+                            }
+                          },
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -365,20 +394,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // ── Hear About Us ────────────────────────────────────────────
   Widget _buildHearAboutUs() {
+    final cs = Theme.of(context).colorScheme;
     final options = [
-      ('tiktok', '📱 TikTok'),
-      ('instagram', '📸 Instagram'),
-      ('linkedin', '💼 LinkedIn'),
-      ('twitter', '🐦 Twitter / X'),
-      ('youtube', '▶️ YouTube'),
-      ('school', '🎓 School / University'),
-      ('friend', '👥 Friend or colleague'),
-      ('other', '✏️ Other'),
+      ('tiktok', 'TikTok'),
+      ('instagram', 'Instagram'),
+      ('linkedin', 'LinkedIn'),
+      ('twitter', 'Twitter / X'),
+      ('youtube', 'YouTube'),
+      ('school', 'School / University'),
+      ('friend', 'Friend or colleague'),
+      ('other', 'Other'),
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
       child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -386,8 +417,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             Text('Where did you hear about us?', style: AppTypography.h1),
             const SizedBox(height: AppSpacing.space2),
             Text(
-              'Help us understand how you found CodeSpark.',
-              style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+              'Help us understand how you found Codekata.',
+              style: AppTypography.body.copyWith(color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: AppSpacing.space8),
             ...options.map((opt) {
@@ -404,11 +435,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     padding: const EdgeInsets.all(AppSpacing.space4),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppColors.primarySurface
-                          : AppColors.surface,
+                          ? AppColors.primary.withValues(alpha: 0.1)
+                          : cs.surface,
                       borderRadius: BorderRadius.circular(AppRadius.lg),
                       border: Border.all(
-                        color: isSelected ? AppColors.primary : AppColors.border,
+                        color: isSelected ? AppColors.primary : cs.outline,
                         width: isSelected ? 2 : 1,
                       ),
                     ),
@@ -431,7 +462,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                             controller: _hearAboutUsOtherController,
                             autofocus: true,
                             decoration: InputDecoration(
-                              hintText: 'Tell us more…',
+                              hintText: 'Tell us more...',
                               isDense: true,
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -440,8 +471,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                               border: OutlineInputBorder(
                                 borderRadius:
                                     BorderRadius.circular(AppRadius.md),
-                                borderSide:
-                                    const BorderSide(color: AppColors.border),
+                                borderSide: BorderSide(color: cs.outline),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius:
@@ -466,6 +496,89 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
+  // ── Theme Selection ──────────────────────────────────────────
+  Widget _buildThemeSelection() {
+    final cs = Theme.of(context).colorScheme;
+    final options = [
+      (ThemeMode.light, Icons.light_mode, 'Light', 'Clean and bright'),
+      (ThemeMode.dark, Icons.dark_mode, 'Dark', 'Easy on the eyes'),
+      (ThemeMode.system, Icons.phone_android, 'System', 'Match your device'),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: AppSpacing.space12),
+          Text('Choose your theme', style: AppTypography.h1),
+          const SizedBox(height: AppSpacing.space2),
+          Text(
+            'Pick your preferred look.',
+            style: AppTypography.body.copyWith(color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpacing.space8),
+          ...options.map((opt) {
+            final isSelected = _selectedThemeMode == opt.$1;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.space3),
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _selectedThemeMode = opt.$1);
+                  ref.read(themeModeProvider.notifier).state = opt.$1;
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(AppSpacing.space4),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primary.withValues(alpha: 0.1)
+                        : cs.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    border: Border.all(
+                      color: isSelected ? AppColors.primary : cs.outline,
+                      width: isSelected ? 2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(opt.$2, color: isSelected ? AppColors.primary : cs.onSurfaceVariant, size: 24),
+                      const SizedBox(width: AppSpacing.space3),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(opt.$3, style: AppTypography.bodyLg),
+                            const SizedBox(height: 2),
+                            Text(
+                              opt.$4,
+                              style: AppTypography.caption.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (isSelected)
+                        const Icon(Icons.check_circle,
+                            color: AppColors.primary, size: 24),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: AppSpacing.space3),
+          Text(
+            'You can change this later in your profile.',
+            style: AppTypography.caption.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Shared selection page ────────────────────────────────────
   Widget _buildSelectionPage({
     required String title,
@@ -474,6 +587,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     required String? selected,
     required ValueChanged<String> onSelect,
   }) {
+    final cs = Theme.of(context).colorScheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
       child: Column(
@@ -484,7 +599,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           const SizedBox(height: AppSpacing.space2),
           Text(
             subtitle,
-            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+            style: AppTypography.body.copyWith(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpacing.space8),
           ...options.map((opt) {
@@ -522,16 +637,20 @@ class _OptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(AppSpacing.space4),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primarySurface : AppColors.surface,
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : cs.surface,
           borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
+            color: isSelected ? AppColors.primary : cs.outline,
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -543,7 +662,12 @@ class _OptionTile extends StatelessWidget {
                 children: [
                   Text(label, style: AppTypography.bodyLg),
                   const SizedBox(height: 2),
-                  Text(description, style: AppTypography.caption),
+                  Text(
+                    description,
+                    style: AppTypography.caption.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             ),

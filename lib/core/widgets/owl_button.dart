@@ -56,7 +56,7 @@ class _OwlButtonState extends State<OwlButton> {
         height: 52,
         transform: Matrix4.translationValues(0, _isPressed ? 4 : 0, 0),
         decoration: BoxDecoration(
-          color: _enabled ? _bg : AppColors.border,
+          color: _enabled ? _bg : Theme.of(context).colorScheme.outline,
           borderRadius: BorderRadius.circular(AppRadius.xxl),
           boxShadow: _isPressed || !_enabled
               ? []
@@ -83,7 +83,7 @@ class _OwlButtonState extends State<OwlButton> {
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
-                  color: _enabled ? _fg : AppColors.textDisabled,
+                  color: _enabled ? _fg : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
       ),

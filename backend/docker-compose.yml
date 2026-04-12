@@ -43,6 +43,12 @@ services:
       redis:
         condition: service_healthy
 
+  # ── Python Execution Sandbox (persistent) ────────
+  exec-python:
+    build:
+      context: ./containers/python
+    restart: unless-stopped
+
   # ── Execution Worker ──────────────────────────────
   exec-worker:
     build:

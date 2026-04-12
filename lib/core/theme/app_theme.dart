@@ -45,6 +45,7 @@ abstract final class AppTheme {
       onError: Colors.white,
       surface: surface,
       onSurface: textPrimary,
+      onSurfaceVariant: textSecondary,
       surfaceContainerHighest: surfaceAlt,
       outline: border,
     );
@@ -87,7 +88,7 @@ abstract final class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: textPrimary,
           minimumSize: const Size.fromHeight(52),
-          side: BorderSide(color: AppColors.borderStrong, width: 2),
+          side: BorderSide(color: border, width: 2),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.xxl),
           ),

@@ -13,7 +13,7 @@ const _milestoneData = <int, (String emoji, String label)>{
   13: ('🧠', 'Gigachad Dev'),
 };
 
-/// A single node in the skill tree — Duolingo-style with zigzag layout.
+/// A single node in the skill tree - Duolingo-style with zigzag layout.
 class SkillTreeNode extends StatefulWidget {
   final Category category;
   final int index;
@@ -52,18 +52,18 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
     super.dispose();
   }
 
-  Color get _bgColor {
+  Color _bgColor(ColorScheme colorScheme) {
     switch (widget.category.status) {
       case CategoryStatus.completed:
         return AppColors.success;
       case CategoryStatus.current:
         return AppColors.primary;
       case CategoryStatus.locked:
-        return AppColors.surfaceAlt;
+        return colorScheme.surfaceContainerHighest;
     }
   }
 
-  Color get _iconColor {
+  Color _iconColor(ColorScheme colorScheme) {
     switch (widget.category.status) {
       case CategoryStatus.completed:
       case CategoryStatus.current:
@@ -96,12 +96,15 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
     final milestone = _milestoneData[widget.index];
     final screenWidth = MediaQuery.of(context).size.width;
     final maxOffset = screenWidth * 0.22;
+    final colorScheme = Theme.of(context).colorScheme;
+    final bgColor = _bgColor(colorScheme);
+    final iconColor = _iconColor(colorScheme);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         // Milestone banner shown above certain nodes
-        if (milestone != null) _buildMilestoneBanner(milestone),
+        if (milestone != null) _buildMilestoneBanner(milestone, colorScheme),
 
         // Node with zigzag offset
         Transform.translate(
@@ -145,16 +148,16 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
                       width: 64,
                       height: 64,
                       decoration: BoxDecoration(
-                        color: _bgColor,
+                        color: bgColor,
                         shape: BoxShape.circle,
                         border: widget.category.status == CategoryStatus.locked
-                            ? Border.all(color: AppColors.border, width: 2)
+                            ? Border.all(color: colorScheme.outline, width: 2)
                             : null,
                         boxShadow:
                             widget.category.status != CategoryStatus.locked
                                 ? [
                                     BoxShadow(
-                                      color: _bgColor.withValues(alpha: 0.35),
+                                      color: bgColor.withValues(alpha: 0.35),
                                       blurRadius: 10,
                                       offset: const Offset(0, 4),
                                     ),
@@ -165,7 +168,7 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
                         widget.category.status == CategoryStatus.completed
                             ? Icons.check_rounded
                             : widget.category.icon,
-                        color: _iconColor,
+                        color: iconColor,
                         size: 28,
                       ),
                     ),
@@ -184,7 +187,7 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
                       fontSize: 12,
                       color: widget.category.status == CategoryStatus.locked
                           ? AppColors.textDisabled
-                          : AppColors.textPrimary,
+                          : colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -196,7 +199,10 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
     );
   }
 
-  Widget _buildMilestoneBanner((String emoji, String label) milestone) {
+  Widget _buildMilestoneBanner(
+    (String emoji, String label) milestone,
+    ColorScheme colorScheme,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(
         top: AppSpacing.space6,
@@ -211,9 +217,9 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
               vertical: AppSpacing.space2,
             ),
             decoration: BoxDecoration(
-              color: AppColors.surfaceAlt,
+              color: colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(AppRadius.full),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: colorScheme.outline),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -225,7 +231,7 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
+                    color: colorScheme.onSurfaceVariant,
                     letterSpacing: 0.3,
                   ),
                 ),

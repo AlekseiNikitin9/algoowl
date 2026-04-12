@@ -34,8 +34,9 @@ class PracticeScreen extends ConsumerWidget {
                     const SizedBox(height: AppSpacing.space1),
                     Text(
                       'Free practice by topic and difficulty',
-                      style: AppTypography.body
-                          .copyWith(color: AppColors.textSecondary),
+                      style: AppTypography.body.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -112,19 +113,20 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: selected ? AppColors.primary : AppColors.surface,
+        color: selected ? AppColors.primary : colorScheme.surface,
         borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(
-          color: selected ? AppColors.primary : AppColors.border,
+          color: selected ? AppColors.primary : colorScheme.outline,
         ),
       ),
       child: Text(
         label,
         style: AppTypography.label.copyWith(
-          color: selected ? Colors.white : AppColors.textPrimary,
+          color: selected ? Colors.white : colorScheme.onSurface,
         ),
       ),
     );
@@ -161,14 +163,15 @@ class _ProblemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.space4),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: colorScheme.surface,
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: colorScheme.outline),
         ),
         child: Row(
           children: [

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
 from .utils.redis import close_redis, get_redis
-from .routers import auth, problems, submissions, progress
+from .routers import auth, problems, submissions, progress, ai
 
 
 @asynccontextmanager
@@ -49,6 +49,7 @@ app.include_router(auth.router)
 app.include_router(problems.router)
 app.include_router(submissions.router)
 app.include_router(progress.router)
+app.include_router(ai.router)
 
 
 @app.get("/health")

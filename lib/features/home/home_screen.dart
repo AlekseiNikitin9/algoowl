@@ -33,7 +33,10 @@ class HomeScreen extends ConsumerWidget {
                   AppSpacing.screenPadding,
                   0,
                 ),
-                child: Row(
+                child: Builder(builder: (context) {
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
+                  return Row(
                   children: [
                     // Streak
                     Container(
@@ -42,7 +45,9 @@ class HomeScreen extends ConsumerWidget {
                         vertical: AppSpacing.space1,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.goldLight,
+                        color: isDark
+                            ? AppColors.gold.withValues(alpha: 0.15)
+                            : AppColors.goldLight,
                         borderRadius: BorderRadius.circular(AppRadius.full),
                       ),
                       child: Row(
@@ -52,8 +57,11 @@ class HomeScreen extends ConsumerWidget {
                           const SizedBox(width: 4),
                           Text(
                             '${user.streak}',
-                            style: AppTypography.label
-                                .copyWith(color: AppColors.goldDark),
+                            style: AppTypography.label.copyWith(
+                              color: isDark
+                                  ? AppColors.gold
+                                  : AppColors.goldDark,
+                            ),
                           ),
                         ],
                       ),
@@ -66,7 +74,9 @@ class HomeScreen extends ConsumerWidget {
                         vertical: AppSpacing.space1,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.primarySurface,
+                        color: isDark
+                            ? AppColors.primary.withValues(alpha: 0.15)
+                            : AppColors.primarySurface,
                         borderRadius: BorderRadius.circular(AppRadius.full),
                       ),
                       child: Row(
@@ -76,8 +86,11 @@ class HomeScreen extends ConsumerWidget {
                           const SizedBox(width: 4),
                           Text(
                             '${user.xp} XP',
-                            style: AppTypography.label
-                                .copyWith(color: AppColors.primaryDark),
+                            style: AppTypography.label.copyWith(
+                              color: isDark
+                                  ? AppColors.primaryLight
+                                  : AppColors.primaryDark,
+                            ),
                           ),
                         ],
                       ),
@@ -94,7 +107,8 @@ class HomeScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
-                ),
+                  );
+                }),
               ),
             ),
 
@@ -381,12 +395,16 @@ class _ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final goldAccent = isDark ? AppColors.gold : AppColors.goldDark;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
-        color: AppColors.goldLight,
+        color: isDark
+            ? AppColors.gold.withValues(alpha: 0.12)
+            : AppColors.goldLight,
         borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
@@ -404,19 +422,22 @@ class _ReviewCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Today's Review", style: AppTypography.h3),
+                Text(
+                  "Today's Review",
+                  style: AppTypography.h3.copyWith(
+                    color: isDark
+                        ? AppColors.darkTextPrimary
+                        : AppColors.textPrimary,
+                  ),
+                ),
                 Text(
                   '$dueCount problems due',
-                  style: AppTypography.caption
-                      .copyWith(color: AppColors.goldDark),
+                  style: AppTypography.caption.copyWith(color: goldAccent),
                 ),
               ],
             ),
           ),
-          const Icon(
-            Icons.chevron_right,
-            color: AppColors.goldDark,
-          ),
+          Icon(Icons.chevron_right, color: goldAccent),
         ],
       ),
     );

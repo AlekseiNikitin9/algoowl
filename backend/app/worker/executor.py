@@ -1,16 +1,22 @@
-"""Docker container executor — runs user code in isolated sandbox containers."""
+"""Executor — sends code to a persistent sandbox service over HTTP.
+
+Instead of spinning up a fresh Docker container per submission (slow cold-start),
+each language has a long-running service that processes requests in isolated
+subprocesses.
+"""
 
 import json
-import subprocess
-import time
 import re
+import time
 from typing import Any
 
+import httpx
 
-# Language → Docker image mapping
-LANGUAGE_IMAGES = {
-    "python": "algoowl-exec-python",
-    "javascript": "algoowl-exec-javascript",
+
+# Language → sandbox service URL (within the Docker Compose network)
+LANGUAGE_URLS = {
+    "python": "http://exec-python:8001",
+    # "javascript": "http://exec-javascript:8001",  # add when ready
 }
 
 # Function name extraction patterns
@@ -19,28 +25,16 @@ FUNCTION_PATTERNS = {
     "javascript": r"function\s+(\w+)\s*\(|(?:const|let|var)\s+(\w+)\s*=",
 }
 
-# Timeout for code execution (seconds)
-EXEC_TIMEOUT = 5
-# Memory limit for sandbox containers
-MEMORY_LIMIT = "256m"
-# CPU limit
-CPU_LIMIT = "0.5"
-# Max PIDs
-PIDS_LIMIT = 50
-# Tmpfs size
-TMPFS_SIZE = "50m"
+EXEC_TIMEOUT = 10  # seconds — generous since the sandbox enforces its own 5s limit
 
 
 def detect_function_name(code: str, language: str) -> str:
-    """Extract the main function name from user code."""
     pattern = FUNCTION_PATTERNS.get(language)
     if not pattern:
         return "solution"
-
     match = re.search(pattern, code)
     if match:
-        # For JS, function name could be in group 1 or group 2
-        return match.group(1) or (match.group(2) if match.lastindex >= 2 else "solution")
+        return match.group(1) or (match.group(2) if match.lastindex and match.lastindex >= 2 else "solution")
     return "solution"
 
 
@@ -50,17 +44,17 @@ def run_in_container(
     test_cases: list[dict],
 ) -> dict[str, Any]:
     """
-    Run user code in a Docker sandbox container.
+    Send code to the persistent sandbox and return execution results.
 
     Returns dict with:
         status: accepted | wrong_answer | runtime_error | time_limit
         test_results: list of {input, expected, actual, passed}
-        runtime_ms: execution time
-        memory_mb: estimated memory usage
+        runtime_ms: wall-clock time in ms
+        memory_mb: 0 (not tracked in persistent mode)
         error: error message or None
     """
-    image = LANGUAGE_IMAGES.get(language)
-    if not image:
+    url = LANGUAGE_URLS.get(language)
+    if not url:
         return {
             "status": "runtime_error",
             "test_results": [],
@@ -69,80 +63,29 @@ def run_in_container(
             "error": f"Unsupported language: {language}",
         }
 
-    func_name = detect_function_name(code, language)
-
-    # Prepare payload for the runner
-    payload = json.dumps({
+    payload = {
         "code": code,
         "test_cases": test_cases,
-        "function_name": func_name,
-    })
+        "function_name": detect_function_name(code, language),
+    }
 
-    # Docker run command with security constraints
-    docker_cmd = [
-        "docker", "run",
-        "--rm",                              # Remove container after exit
-        "--network=none",                    # No network access
-        "--read-only",                       # Read-only filesystem
-        "--tmpfs", f"/tmp:size={TMPFS_SIZE},noexec",  # Writable /tmp with size limit
-        f"--memory={MEMORY_LIMIT}",          # Memory limit
-        f"--cpus={CPU_LIMIT}",               # CPU limit
-        f"--pids-limit={PIDS_LIMIT}",        # Fork bomb protection
-        "--security-opt=no-new-privileges",  # No privilege escalation
-        "-i",                                # Read from stdin
-        image,
-    ]
-
-    start_time = time.monotonic()
+    start = time.monotonic()
 
     try:
-        proc = subprocess.run(
-            docker_cmd,
-            input=payload,
-            capture_output=True,
-            text=True,
-            timeout=EXEC_TIMEOUT + 2,  # Slight buffer over container timeout
+        response = httpx.post(
+            f"{url}/",
+            json=payload,
+            timeout=EXEC_TIMEOUT,
         )
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
 
-        if proc.returncode != 0:
-            stderr = proc.stderr.strip()
-            # Check if it was an OOM kill
-            if "killed" in stderr.lower() or proc.returncode == 137:
-                return {
-                    "status": "runtime_error",
-                    "test_results": [],
-                    "runtime_ms": elapsed_ms,
-                    "memory_mb": 256,
-                    "error": "Process killed: exceeded memory limit",
-                }
-            return {
-                "status": "runtime_error",
-                "test_results": [],
-                "runtime_ms": elapsed_ms,
-                "memory_mb": 0,
-                "error": stderr[:500] if stderr else "Unknown execution error",
-            }
-
-        # Parse runner output
-        stdout = proc.stdout.strip()
-        if not stdout:
-            return {
-                "status": "runtime_error",
-                "test_results": [],
-                "runtime_ms": elapsed_ms,
-                "memory_mb": 0,
-                "error": "No output from execution",
-            }
-
-        result = json.loads(stdout)
+        result = response.json()
         result["runtime_ms"] = elapsed_ms
-        result["memory_mb"] = 0  # TODO: parse from docker stats if needed
-
+        result.setdefault("memory_mb", 0)
         return result
 
-    except subprocess.TimeoutExpired:
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+    except httpx.TimeoutException:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
         return {
             "status": "time_limit",
             "test_results": [],
@@ -150,13 +93,13 @@ def run_in_container(
             "memory_mb": 0,
             "error": f"Time limit exceeded ({EXEC_TIMEOUT}s)",
         }
-    except json.JSONDecodeError as e:
+    except httpx.ConnectError as e:
         return {
             "status": "runtime_error",
             "test_results": [],
-            "runtime_ms": int((time.monotonic() - start_time) * 1000),
+            "runtime_ms": 0,
             "memory_mb": 0,
-            "error": f"Failed to parse execution output: {e}",
+            "error": f"Sandbox unreachable: {e}",
         }
     except Exception as e:
         return {

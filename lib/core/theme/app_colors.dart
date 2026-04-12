@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
-/// Codekata color tokens — sourced from Picasso's design doc.
+/// Codekata color tokens - sourced from Picasso's design doc.
 /// Electric blue identity, gamified DSA learning.
 abstract final class AppColors {
-  // ── Primary — Electric Blue ──────────────────────────────
+  // ── Primary - Electric Blue ──────────────────────────────
   static const primary = Color(0xFF1A8CFF);
   static const primaryDark = Color(0xFF0066CC);
   static const primaryLight = Color(0xFFC8E4FF);
   static const primarySurface = Color(0xFFEEF6FF);
 
-  // ── XP Gold — Streak & Rewards ───────────────────────────
+  // ── XP Gold - Streak & Rewards ───────────────────────────
   static const gold = Color(0xFFF5A623);
   static const goldDark = Color(0xFFC97E10);
   static const goldLight = Color(0xFFFEF3DA);

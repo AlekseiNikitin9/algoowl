@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 
-/// Floating XP reward toast — slides up from bottom, fades out.
+/// Floating XP reward toast - slides up from bottom, fades out.
 class XpToast extends StatefulWidget {
   final int xp;
   final VoidCallback? onComplete;

@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme/app_colors.dart';
 import '../../providers/app_providers.dart';
 import '../home/home_screen.dart';
 import '../practice/practice_screen.dart';
 import '../leaderboard/leaderboard_screen.dart';
 import '../profile/profile_screen.dart';
 
-/// Shell with bottom navigation — Home · Practice · Leaderboard · Profile.
+/// Shell with bottom navigation - Home · Practice · Leaderboard · Profile.
 class AppShell extends ConsumerWidget {
   const AppShell({super.key});
 
@@ -31,7 +30,7 @@ class AppShell extends ConsumerWidget {
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           border: Border(
-            top: BorderSide(color: AppColors.border, width: 1),
+            top: BorderSide(color: Theme.of(context).colorScheme.outline, width: 1),
           ),
         ),
         child: BottomNavigationBar(

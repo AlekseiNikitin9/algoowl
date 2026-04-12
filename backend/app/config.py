@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     # AI
     openai_api_key: str = "sk-placeholder"
+    gemini_api_key: str = "placeholder"
 
     # App
     app_env: str = "development"

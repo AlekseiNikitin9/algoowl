@@ -19,6 +19,8 @@ dependencies:
   smooth_page_indicator: ^1.2.0+3
   percent_indicator: ^4.2.3
   shimmer: ^3.0.0
+  http: ^1.2.0
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:

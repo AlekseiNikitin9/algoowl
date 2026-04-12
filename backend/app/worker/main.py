@@ -15,7 +15,6 @@ import redis.asyncio as redis
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Add parent to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from app.database import async_session, engine
@@ -31,7 +30,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("exec-worker")
 
-# XP rewards
 XP_REWARD = {
     "easy": 10,
     "medium": 20,
@@ -40,7 +38,6 @@ XP_REWARD = {
 
 
 async def process_submission(redis_client: redis.Redis, job_data: dict):
-    """Process a single submission job."""
     submission_id = job_data["submission_id"]
     problem_id = job_data["problem_id"]
     language = job_data["language"]
@@ -49,7 +46,6 @@ async def process_submission(redis_client: redis.Redis, job_data: dict):
 
     logger.info(f"Processing submission {submission_id} ({language})")
 
-    # Run code in sandbox (blocking — run in thread pool)
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
         None,
@@ -66,15 +62,14 @@ async def process_submission(redis_client: redis.Redis, job_data: dict):
     runtime_ms = result.get("runtime_ms")
     memory_mb = result.get("memory_mb")
     error = result.get("error")
+    stdout = result.get("stdout")
 
     logger.info(
         f"Submission {submission_id}: {status} "
         f"({passed}/{total} passed, {runtime_ms}ms)"
     )
 
-    # Update submission in DB
     async with async_session() as db:
-        # Update the submission record
         await db.execute(
             update(Submission)
             .where(Submission.id == uuid.UUID(submission_id))
@@ -87,18 +82,17 @@ async def process_submission(redis_client: redis.Redis, job_data: dict):
                 ai_feedback={
                     "test_results": test_results,
                     "error": error,
+                    "stdout": stdout,
                 },
             )
         )
 
-        # If accepted, update user_progress to solved + award XP
         if status == "accepted":
             sub_result = await db.execute(
                 select(Submission).where(Submission.id == uuid.UUID(submission_id))
             )
             submission = sub_result.scalar_one()
 
-            # Check if already solved (don't double-award XP)
             prog_result = await db.execute(
                 select(UserProgress).where(
                     UserProgress.user_id == submission.user_id,
@@ -110,7 +104,6 @@ async def process_submission(redis_client: redis.Redis, job_data: dict):
             if progress and progress.status != "solved":
                 progress.status = "solved"
 
-                # Award XP — look up problem difficulty
                 from app.models.problem import Problem
                 prob_result = await db.execute(
                     select(Problem).where(Problem.id == submission.problem_id)
@@ -129,25 +122,20 @@ async def process_submission(redis_client: redis.Redis, job_data: dict):
 
 
 async def worker_loop():
-    """Main worker loop — blocking pop from Redis exec:queue."""
     logger.info("Execution worker starting...")
 
     redis_client = redis.from_url(settings.redis_url, decode_responses=True)
-
-    # Verify connection
     await redis_client.ping()
     logger.info("Connected to Redis")
 
     while True:
         try:
-            # BRPOP blocks until a job is available (timeout 5s to allow graceful shutdown)
             result = await redis_client.brpop("exec:queue", timeout=5)
             if result is None:
-                continue  # Timeout, loop again
+                continue
 
             _, raw_data = result
             job_data = json.loads(raw_data)
-
             await process_submission(redis_client, job_data)
 
         except redis.ConnectionError:

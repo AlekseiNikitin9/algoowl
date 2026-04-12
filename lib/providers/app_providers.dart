@@ -1,11 +1,19 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/services/api_service.dart';
 import '../models/user_profile.dart';
 import '../models/category.dart';
 import '../models/problem.dart';
 
+/// Singleton API service - overridden in main.dart with the initialized instance.
+final apiServiceProvider = Provider<ApiService>((ref) => ApiService());
+
 /// Whether onboarding has been completed.
 final onboardingCompleteProvider = StateProvider<bool>((ref) => false);
+
+/// App theme mode (light / dark / system).
+final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
 
 /// Current user profile.
 final userProfileProvider =

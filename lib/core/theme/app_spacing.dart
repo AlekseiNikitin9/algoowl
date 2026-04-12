@@ -1,4 +1,4 @@
-/// Spacing & radius tokens — 4px base unit.
+/// Spacing & radius tokens - 4px base unit.
 abstract final class AppSpacing {
   static const double space1 = 4;
   static const double space2 = 8;

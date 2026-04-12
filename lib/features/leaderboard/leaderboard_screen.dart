@@ -23,8 +23,9 @@ class LeaderboardScreen extends StatelessWidget {
               const SizedBox(height: AppSpacing.space1),
               Text(
                 'Weekly XP ranking',
-                style: AppTypography.body
-                    .copyWith(color: AppColors.textSecondary),
+                style: AppTypography.body.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: AppSpacing.space6),
 
@@ -105,17 +106,19 @@ class _PodiumTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         // Avatar
         CircleAvatar(
           radius: rank == 1 ? 28 : 22,
-          backgroundColor:
-              isUser ? AppColors.primaryLight : AppColors.surfaceAlt,
+          backgroundColor: isUser
+              ? AppColors.primaryLight
+              : colorScheme.surfaceContainerHighest,
           child: Icon(
             Icons.person,
-            color: isUser ? AppColors.primary : AppColors.textSecondary,
+            color: isUser ? AppColors.primary : colorScheme.onSurfaceVariant,
             size: rank == 1 ? 28 : 22,
           ),
         ),
@@ -123,7 +126,7 @@ class _PodiumTile extends StatelessWidget {
         Text(
           name,
           style: AppTypography.label.copyWith(
-            color: isUser ? AppColors.primary : AppColors.textPrimary,
+            color: isUser ? AppColors.primary : colorScheme.onSurface,
           ),
         ),
         Text(
@@ -136,7 +139,9 @@ class _PodiumTile extends StatelessWidget {
           width: 70,
           height: _height,
           decoration: BoxDecoration(
-            color: isUser ? AppColors.primary : AppColors.surfaceAlt,
+            color: isUser
+                ? AppColors.primary
+                : colorScheme.surfaceContainerHighest,
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(AppRadius.sm),
             ),
@@ -167,6 +172,7 @@ class _LeaderboardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.space2),
       child: Row(
@@ -176,14 +182,14 @@ class _LeaderboardRow extends StatelessWidget {
             child: Text(
               '$rank',
               style: AppTypography.bodyLg
-                  .copyWith(color: AppColors.textSecondary),
+                  .copyWith(color: colorScheme.onSurfaceVariant),
             ),
           ),
           CircleAvatar(
             radius: 18,
-            backgroundColor: AppColors.surfaceAlt,
-            child: const Icon(Icons.person,
-                color: AppColors.textSecondary, size: 18),
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            child: Icon(Icons.person,
+                color: colorScheme.onSurfaceVariant, size: 18),
           ),
           const SizedBox(width: AppSpacing.space3),
           Expanded(
