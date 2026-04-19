@@ -3,83 +3,94 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
-/// Typography tokens per Picasso's design doc.
-/// Primary: Nunito, Code: JetBrains Mono.
-///
-/// Body/heading styles intentionally omit [color] so they inherit from the
-/// current [Theme], making them work in both light and dark mode.
+/// Codekata typography. Display = Space Grotesk (tight tracking),
+/// body = Inter, code = JetBrains Mono.
 abstract final class AppTypography {
-  // ── Nunito styles ────────────────────────────────────────
+  // ── Display (Space Grotesk) ──────────────────────────────
 
-  static TextStyle get display => GoogleFonts.nunito(
-        fontWeight: FontWeight.w900,
+  static TextStyle get display => GoogleFonts.spaceGrotesk(
+        fontWeight: FontWeight.w700,
         fontSize: 32,
         height: 38 / 32,
+        letterSpacing: -0.02 * 32,
       );
 
-  static TextStyle get h1 => GoogleFonts.nunito(
-        fontWeight: FontWeight.w800,
+  static TextStyle get h1 => GoogleFonts.spaceGrotesk(
+        fontWeight: FontWeight.w700,
         fontSize: 26,
         height: 32 / 26,
+        letterSpacing: -0.02 * 26,
       );
 
-  static TextStyle get h2 => GoogleFonts.nunito(
-        fontWeight: FontWeight.w700,
+  static TextStyle get h2 => GoogleFonts.spaceGrotesk(
+        fontWeight: FontWeight.w600,
         fontSize: 20,
         height: 26 / 20,
+        letterSpacing: -0.015 * 20,
       );
 
-  static TextStyle get h3 => GoogleFonts.nunito(
-        fontWeight: FontWeight.w700,
+  static TextStyle get h3 => GoogleFonts.spaceGrotesk(
+        fontWeight: FontWeight.w600,
         fontSize: 17,
         height: 22 / 17,
+        letterSpacing: -0.01 * 17,
       );
 
-  static TextStyle get bodyLg => GoogleFonts.nunito(
-        fontWeight: FontWeight.w600,
+  // ── Body (Inter) ─────────────────────────────────────────
+
+  static TextStyle get bodyLg => GoogleFonts.inter(
+        fontWeight: FontWeight.w500,
         fontSize: 16,
         height: 24 / 16,
+        letterSpacing: -0.005 * 16,
       );
 
-  static TextStyle get body => GoogleFonts.nunito(
+  static TextStyle get body => GoogleFonts.inter(
         fontWeight: FontWeight.w400,
         fontSize: 15,
         height: 22 / 15,
       );
 
-  static TextStyle get label => GoogleFonts.nunito(
-        fontWeight: FontWeight.w700,
+  static TextStyle get label => GoogleFonts.inter(
+        fontWeight: FontWeight.w600,
         fontSize: 13,
         height: 18 / 13,
       );
 
-  static TextStyle get caption => GoogleFonts.nunito(
-        fontWeight: FontWeight.w600,
+  static TextStyle get caption => GoogleFonts.inter(
+        fontWeight: FontWeight.w500,
         fontSize: 12,
         height: 16 / 12,
       );
 
-  // ── JetBrains Mono styles (code editor) ──────────────────
-  // These keep explicit colors - always shown on dark code bg.
+  /// Small-caps eyebrow label (used by section headers).
+  static TextStyle get eyebrow => GoogleFonts.inter(
+        fontWeight: FontWeight.w600,
+        fontSize: 11,
+        height: 14 / 11,
+        letterSpacing: 0.14 * 11,
+      );
+
+  // ── JetBrains Mono (code editor) ─────────────────────────
 
   static TextStyle get codeBody => GoogleFonts.jetBrainsMono(
         fontWeight: FontWeight.w400,
-        fontSize: 14,
-        height: 20 / 14,
+        fontSize: 13,
+        height: 20 / 13,
         color: AppColors.codeText,
       );
 
   static TextStyle get codeKeyword => GoogleFonts.jetBrainsMono(
-        fontWeight: FontWeight.w600,
-        fontSize: 14,
-        height: 20 / 14,
+        fontWeight: FontWeight.w500,
+        fontSize: 13,
+        height: 20 / 13,
         color: AppColors.codeKeyword,
       );
 
   static TextStyle get codeSlot => GoogleFonts.jetBrainsMono(
         fontWeight: FontWeight.w500,
-        fontSize: 14,
-        height: 20 / 14,
+        fontSize: 13,
+        height: 20 / 13,
         color: AppColors.codeSlot,
         decoration: TextDecoration.underline,
       );

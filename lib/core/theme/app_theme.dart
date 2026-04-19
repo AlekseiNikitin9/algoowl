@@ -55,7 +55,7 @@ abstract final class AppTheme {
       brightness: brightness,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: bg,
-      fontFamily: GoogleFonts.nunito().fontFamily,
+      fontFamily: GoogleFonts.inter().fontFamily,
       appBarTheme: AppBarTheme(
         backgroundColor: bg,
         foregroundColor: textPrimary,
@@ -78,9 +78,10 @@ abstract final class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.xxl),
           ),
-          textStyle: GoogleFonts.nunito(
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
+          textStyle: GoogleFonts.inter(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            letterSpacing: -0.01 * 15,
           ),
         ),
       ),
@@ -88,13 +89,14 @@ abstract final class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: textPrimary,
           minimumSize: const Size.fromHeight(52),
-          side: BorderSide(color: border, width: 2),
+          side: BorderSide(color: border, width: 1),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.xxl),
+            borderRadius: BorderRadius.circular(AppRadius.full),
           ),
-          textStyle: GoogleFonts.nunito(
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
+          textStyle: GoogleFonts.inter(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            letterSpacing: -0.01 * 15,
           ),
         ),
       ),

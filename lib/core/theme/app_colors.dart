@@ -14,15 +14,15 @@ abstract final class AppColors {
   static const goldDark = Color(0xFFC97E10);
   static const goldLight = Color(0xFFFEF3DA);
 
-  // ── Success Green ────────────────────────────────────────
-  static const success = Color(0xFF58CC02);
-  static const successDark = Color(0xFF3D9900);
-  static const successLight = Color(0xFFD7F5B7);
+  // ── Success Green (Linear/Arc teal-green) ────────────────
+  static const success = Color(0xFF2EC37A);
+  static const successDark = Color(0xFF1F8F58);
+  static const successLight = Color(0xFFD4F2E3);
 
-  // ── Error Red ────────────────────────────────────────────
-  static const error = Color(0xFFFF4B4B);
-  static const errorDark = Color(0xFFCC2020);
-  static const errorLight = Color(0xFFFFE0E0);
+  // ── Error Red (Apple-desaturated) ────────────────────────
+  static const error = Color(0xFFF14A59);
+  static const errorDark = Color(0xFFC62330);
+  static const errorLight = Color(0xFFFDE2E5);
 
   // ── Warning Orange ───────────────────────────────────────
   static const warning = Color(0xFFFF9600);
@@ -41,14 +41,15 @@ abstract final class AppColors {
   static const textDisabled = Color(0xFFB0B8CC);
   static const textOnPrimary = Color(0xFFFFFFFF);
 
-  // ── Code Editor (Dark surface, same for both themes) ────
-  static const codeBg = Color(0xFF1A1D2E);
-  static const codeLineHl = Color(0xFF252A3D);
+  // ── Code Editor (Dark canvas) ───────────────────────────
+  static const codeBg = Color(0xFF10121E);
+  static const codeBgAlt = Color(0xFF1A1D2E);
+  static const codeLineHl = Color(0xFF1F2336);
   static const codeText = Color(0xFFE2E8F8);
   static const codeKeyword = Color(0xFFA78BFA);
   static const codeString = Color(0xFF6EE7A0);
   static const codeNumber = Color(0xFFFBB86C);
-  static const codeComment = Color(0xFF7A8099);
+  static const codeComment = Color(0xFF5E6885);
   static const codeSlot = Color(0xFF1A8CFF);
 
   // ── Dark mode overrides ─────────────────────────────────

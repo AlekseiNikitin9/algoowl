@@ -19,17 +19,15 @@ class OwlProgressBar extends StatelessWidget {
   static Color _progressColor(double t) {
     final clamped = t.clamp(0.0, 1.0);
     if (clamped <= 0.5) {
-      // red → yellow
       return Color.lerp(
-        const Color(0xFFFF4B4B),
+        const Color(0xFFF14A59),
         const Color(0xFFF5A623),
         clamped / 0.5,
       )!;
     } else {
-      // yellow → green
       return Color.lerp(
         const Color(0xFFF5A623),
-        const Color(0xFF58CC02),
+        const Color(0xFF2EC37A),
         (clamped - 0.5) / 0.5,
       )!;
     }
