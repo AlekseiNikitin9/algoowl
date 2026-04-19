@@ -58,6 +58,9 @@ class Problem {
   final Map<String, String> starterCode;
   final LessonContent lessonContent;
   final List<String> hints;
+  final int xp;
+  final int minutes;
+  final bool solved;
 
   const Problem({
     required this.id,
@@ -71,6 +74,9 @@ class Problem {
     this.starterCode = const {},
     this.lessonContent = const LessonContent(),
     this.hints = const [],
+    this.xp = 20,
+    this.minutes = 10,
+    this.solved = false,
   });
 }
 
@@ -317,4 +323,52 @@ final List<Problem> kSampleProblems = [
           'and compare those counts efficiently?',
     ),
   ),
+];
+
+// ── Unit problem lists (per-category brief metadata) ─────────
+
+class UnitProblem {
+  final String slug;
+  final String title;
+  final Difficulty difficulty;
+  final int xp;
+  final int minutes;
+  final bool solved;
+  const UnitProblem({
+    required this.slug,
+    required this.title,
+    required this.difficulty,
+    required this.xp,
+    required this.minutes,
+    required this.solved,
+  });
+}
+
+const Map<String, List<UnitProblem>> kUnitProblems = {
+  'hashing': [
+    UnitProblem(slug: 'two-sum',             title: 'Two Sum',                       difficulty: Difficulty.easy,   xp: 20, minutes: 8,  solved: true),
+    UnitProblem(slug: 'contains-duplicate',  title: 'Contains Duplicate',            difficulty: Difficulty.easy,   xp: 15, minutes: 6,  solved: true),
+    UnitProblem(slug: 'valid-anagram',       title: 'Valid Anagram',                 difficulty: Difficulty.easy,   xp: 20, minutes: 9,  solved: false),
+    UnitProblem(slug: 'group-anagrams',      title: 'Group Anagrams',                difficulty: Difficulty.medium, xp: 30, minutes: 14, solved: true),
+    UnitProblem(slug: 'top-k-frequent',      title: 'Top K Frequent Elements',       difficulty: Difficulty.medium, xp: 35, minutes: 15, solved: false),
+    UnitProblem(slug: 'longest-consecutive', title: 'Longest Consecutive Sequence',  difficulty: Difficulty.medium, xp: 40, minutes: 18, solved: false),
+    UnitProblem(slug: 'subarray-sum-k',      title: 'Subarray Sum Equals K',         difficulty: Difficulty.hard,   xp: 60, minutes: 25, solved: false),
+    UnitProblem(slug: 'first-missing-pos',   title: 'First Missing Positive',        difficulty: Difficulty.hard,   xp: 65, minutes: 28, solved: false),
+  ],
+  'arrays-strings': [
+    UnitProblem(slug: 'best-time-stock',      title: 'Best Time to Buy and Sell Stock', difficulty: Difficulty.easy,   xp: 20, minutes: 8,  solved: true),
+    UnitProblem(slug: 'plus-one',             title: 'Plus One',                        difficulty: Difficulty.easy,   xp: 15, minutes: 5,  solved: true),
+    UnitProblem(slug: 'merge-sorted',         title: 'Merge Sorted Array',              difficulty: Difficulty.easy,   xp: 20, minutes: 9,  solved: true),
+    UnitProblem(slug: 'product-array-except', title: 'Product of Array Except Self',    difficulty: Difficulty.medium, xp: 35, minutes: 15, solved: true),
+    UnitProblem(slug: 'rotate-array',         title: 'Rotate Array',                    difficulty: Difficulty.medium, xp: 30, minutes: 12, solved: true),
+    UnitProblem(slug: 'trap-rain-water',      title: 'Trapping Rain Water',             difficulty: Difficulty.hard,   xp: 60, minutes: 25, solved: true),
+    UnitProblem(slug: 'median-two-sorted',    title: 'Median of Two Sorted Arrays',     difficulty: Difficulty.hard,   xp: 70, minutes: 30, solved: true),
+  ],
+};
+
+/// Fallback list used for locked units, so the layout still renders.
+const List<UnitProblem> kLockedSampleProblems = [
+  UnitProblem(slug: '-', title: 'First problem',  difficulty: Difficulty.easy,   xp: 20, minutes: 8,  solved: false),
+  UnitProblem(slug: '-', title: 'Second problem', difficulty: Difficulty.easy,   xp: 20, minutes: 9,  solved: false),
+  UnitProblem(slug: '-', title: 'Third problem',  difficulty: Difficulty.medium, xp: 35, minutes: 15, solved: false),
 ];

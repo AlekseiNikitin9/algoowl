@@ -2,27 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../models/category.dart';
 import '../theme/app_colors.dart';
-import '../theme/app_spacing.dart';
+import 'ck_icons.dart';
 
-/// Milestone icons that appear between skill tree nodes at key thresholds.
-/// Shown above node index 0, 5, 9, 13 (start, mid-tier, advanced, god-tier).
-const _milestoneData = <int, (String emoji, String label)>{
-  0: ('🌱', 'Humble Beginner'),
-  5: ('⚡', 'Getting Dangerous'),
-  9: ('🔥', 'Advanced Grinder'),
-  13: ('🧠', 'Gigachad Dev'),
-};
-
-/// A single node in the skill tree - Duolingo-style with zigzag layout.
+/// Skill tree node — 72px circle, surface-with-border when locked,
+/// primary-blue when current, success-green when completed.
+/// Zigzag offsets are applied by the parent (see redesign home.jsx).
 class SkillTreeNode extends StatefulWidget {
   final Category category;
-  final int index;
   final VoidCallback? onTap;
 
   const SkillTreeNode({
     super.key,
     required this.category,
-    required this.index,
     this.onTap,
   });
 
@@ -32,214 +23,138 @@ class SkillTreeNode extends StatefulWidget {
 
 class _SkillTreeNodeState extends State<SkillTreeNode>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _pulseController;
+  late final AnimationController _pulse;
+  bool _pressed = false;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
+    _pulse = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 2000),
     );
+    if (widget.category.status == CategoryStatus.current) _pulse.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant SkillTreeNode old) {
+    super.didUpdateWidget(old);
     if (widget.category.status == CategoryStatus.current) {
-      _pulseController.repeat();
+      if (!_pulse.isAnimating) _pulse.repeat();
+    } else {
+      _pulse.stop();
     }
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
+    _pulse.dispose();
     super.dispose();
-  }
-
-  Color _bgColor(ColorScheme colorScheme) {
-    switch (widget.category.status) {
-      case CategoryStatus.completed:
-        return AppColors.success;
-      case CategoryStatus.current:
-        return AppColors.primary;
-      case CategoryStatus.locked:
-        return colorScheme.surfaceContainerHighest;
-    }
-  }
-
-  Color _iconColor(ColorScheme colorScheme) {
-    switch (widget.category.status) {
-      case CategoryStatus.completed:
-      case CategoryStatus.current:
-        return Colors.white;
-      case CategoryStatus.locked:
-        return AppColors.textDisabled;
-    }
-  }
-
-  /// Zigzag: offset alternates left/center/right based on index pattern.
-  /// Pattern: center → right → center → left → center → right → ...
-  double _horizontalOffset(double maxOffset) {
-    // Use a 4-step cycle: 0=center, 1=right, 2=center, 3=left
-    switch (widget.index % 4) {
-      case 0:
-        return 0;
-      case 1:
-        return maxOffset;
-      case 2:
-        return 0;
-      case 3:
-        return -maxOffset;
-      default:
-        return 0;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final milestone = _milestoneData[widget.index];
-    final screenWidth = MediaQuery.of(context).size.width;
-    final maxOffset = screenWidth * 0.22;
-    final colorScheme = Theme.of(context).colorScheme;
-    final bgColor = _bgColor(colorScheme);
-    final iconColor = _iconColor(colorScheme);
+    final status = widget.category.status;
+    final locked = status == CategoryStatus.locked;
+    final scheme = Theme.of(context).colorScheme;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Milestone banner shown above certain nodes
-        if (milestone != null) _buildMilestoneBanner(milestone, colorScheme),
+    final bg = switch (status) {
+      CategoryStatus.completed => AppColors.success,
+      CategoryStatus.current => AppColors.primary,
+      CategoryStatus.locked => scheme.surfaceContainerHighest,
+    };
+    final fg = locked ? AppColors.textDisabled : Colors.white;
+    final shadow = switch (status) {
+      CategoryStatus.completed => AppColors.successDark.withValues(alpha: 0.25),
+      CategoryStatus.current => AppColors.primaryDark.withValues(alpha: 0.3),
+      CategoryStatus.locked => Colors.transparent,
+    };
 
-        // Node with zigzag offset
-        Transform.translate(
-          offset: Offset(_horizontalOffset(maxOffset), 0),
-          child: GestureDetector(
-            onTap: widget.category.status != CategoryStatus.locked
-                ? widget.onTap
-                : null,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    return GestureDetector(
+      onTapDown: locked ? null : (_) => setState(() => _pressed = true),
+      onTapUp: locked ? null : (_) => setState(() => _pressed = false),
+      onTapCancel: locked ? null : () => setState(() => _pressed = false),
+      onTap: locked ? null : widget.onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedScale(
+            duration: const Duration(milliseconds: 120),
+            scale: _pressed ? 0.96 : 1,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Pulse ring for current node
-                    if (widget.category.status == CategoryStatus.current)
-                      AnimatedBuilder(
-                        animation: _pulseController,
-                        builder: (context, _) {
-                          return Transform.scale(
-                            scale: 1.0 + (_pulseController.value * 0.4),
-                            child: Opacity(
-                              opacity: 0.6 * (1.0 - _pulseController.value),
-                              child: Container(
-                                width: 64,
-                                height: 64,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: AppColors.primary,
-                                    width: 3,
-                                  ),
-                                ),
-                              ),
+                if (status == CategoryStatus.current)
+                  AnimatedBuilder(
+                    animation: _pulse,
+                    builder: (_, __) {
+                      final v = _pulse.value;
+                      return Container(
+                        width: 72 + v * 36,
+                        height: 72 + v * 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.5 * (1 - v)),
+                            width: 2,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: bg,
+                    shape: BoxShape.circle,
+                    border: locked ? Border.all(color: scheme.outline) : null,
+                    boxShadow: locked
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: shadow,
+                              offset: Offset(0, status == CategoryStatus.current ? 8 : 6),
+                              blurRadius: status == CategoryStatus.current ? 20 : 14,
                             ),
-                          );
-                        },
-                      ),
-                    // Main circle
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: bgColor,
-                        shape: BoxShape.circle,
-                        border: widget.category.status == CategoryStatus.locked
-                            ? Border.all(color: colorScheme.outline, width: 2)
-                            : null,
-                        boxShadow:
-                            widget.category.status != CategoryStatus.locked
-                                ? [
-                                    BoxShadow(
-                                      color: bgColor.withValues(alpha: 0.35),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ]
-                                : null,
-                      ),
-                      child: Icon(
-                        widget.category.status == CategoryStatus.completed
-                            ? Icons.check_rounded
-                            : widget.category.icon,
-                        color: iconColor,
-                        size: 28,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.space2),
-                SizedBox(
-                  width: 90,
-                  child: Text(
-                    widget.category.name,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                      color: widget.category.status == CategoryStatus.locked
-                          ? AppColors.textDisabled
-                          : colorScheme.onSurface,
-                    ),
+                          ],
+                  ),
+                  child: Center(
+                    child: _nodeIcon(status, fg),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMilestoneBanner(
-    (String emoji, String label) milestone,
-    ColorScheme colorScheme,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: AppSpacing.space6,
-        bottom: AppSpacing.space4,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.space4,
-              vertical: AppSpacing.space2,
-            ),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(AppRadius.full),
-              border: Border.all(color: colorScheme.outline),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(milestone.$1, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 6),
-                Text(
-                  milestone.$2,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurfaceVariant,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 96,
+            child: Text(
+              widget.category.name,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                height: 16 / 12,
+                color: locked ? AppColors.textDisabled : scheme.onSurface,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _nodeIcon(CategoryStatus status, Color color) {
+    switch (status) {
+      case CategoryStatus.completed:
+        return CkIcon.check(size: 28, color: color);
+      case CategoryStatus.locked:
+        return CkIcon.lock(size: 26, color: color);
+      case CategoryStatus.current:
+        return CkIcon.play(size: 24, color: color);
+    }
   }
 }

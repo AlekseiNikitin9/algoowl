@@ -4,11 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/widgets/ck_icons.dart';
+import '../../core/widgets/code_dust.dart';
 import '../../core/widgets/owl_button.dart';
-import '../../core/widgets/progress_bar.dart';
-import '../../core/widgets/xp_toast.dart';
 import '../../core/services/api_service.dart';
 import '../../models/problem.dart';
 import '../../providers/app_providers.dart';
@@ -18,61 +17,52 @@ import '../../providers/app_providers.dart';
 // ═══════════════════════════════════════════════════════════════
 
 class _Snippet {
-  final String trigger;   // prefix user types to trigger this
-  final String label;     // shown on the chip
-  final String template;  // inserted text
-  final int cursorFromEnd; // place cursor N chars from end (0 = at end)
+  final String trigger;
+  final String label;
+  final String template;
+  final int cursorFromEnd;
 
   const _Snippet(this.trigger, this.label, this.template,
       [this.cursorFromEnd = 0]);
 }
 
 const _pythonSnippets = [
-  _Snippet('for', 'for loop', 'for i in range(n):\n    '),
+  _Snippet('for', 'for', 'for i in range(n):\n    '),
   _Snippet('if', 'if', 'if :\n    ', 6),
   _Snippet('elif', 'elif', 'elif :\n    ', 6),
   _Snippet('else', 'else', 'else:\n    '),
   _Snippet('while', 'while', 'while :\n    ', 6),
-  _Snippet('def', 'def fn', 'def name():\n    return '),
+  _Snippet('def', 'def', 'def name():\n    return '),
   _Snippet('class', 'class', 'class Name:\n    '),
   _Snippet('return', 'return', 'return '),
-  _Snippet('try', 'try/except', 'try:\n    pass\nexcept Exception as e:\n    pass'),
-  _Snippet('import', 'import', 'import '),
-  _Snippet('lambda', 'lambda', 'lambda x: '),
-  _Snippet('print', 'print()', 'print()', 1),
-  _Snippet('len', 'len()', 'len()', 1),
-  _Snippet('range', 'range()', 'range()', 1),
+  _Snippet('print', 'print', 'print()', 1),
+  _Snippet('len', 'len', 'len()', 1),
+  _Snippet('range', 'range', 'range()', 1),
   _Snippet('dict', '{ }', '{}', 1),
   _Snippet('list', '[ ]', '[]', 1),
-  _Snippet('set', 'set()', 'set()', 1),
-  _Snippet('sorted', 'sorted()', 'sorted()', 1),
-  _Snippet('enumerate', 'enumerate()', 'enumerate()', 1),
-  _Snippet('zip', 'zip()', 'zip()', 1),
-  _Snippet('map', 'map()', 'map(lambda x: x, )', 1),
-  _Snippet('filter', 'filter()', 'filter(lambda x: x, )', 1),
+  _Snippet('set', 'set', 'set()', 1),
+  _Snippet('sorted', 'sorted', 'sorted()', 1),
+  _Snippet('enumerate', 'enumerate', 'enumerate()', 1),
+  _Snippet('zip', 'zip', 'zip()', 1),
 ];
 
 const _jsSnippets = [
-  _Snippet('for', 'for loop', 'for (let i = 0; i < n; i++) {\n    \n}', 2),
+  _Snippet('for', 'for', 'for (let i = 0; i < n; i++) {\n    \n}', 2),
   _Snippet('if', 'if', 'if () {\n    \n}', 8),
   _Snippet('else', 'else', ' else {\n    \n}'),
   _Snippet('while', 'while', 'while () {\n    \n}', 8),
-  _Snippet('function', 'function', 'function name() {\n    return;\n}', 11),
+  _Snippet('function', 'fn', 'function name() {\n    return;\n}', 11),
   _Snippet('const', 'const', 'const  = ', 3),
   _Snippet('let', 'let', 'let  = ', 3),
   _Snippet('return', 'return', 'return '),
-  _Snippet('console', 'console.log', 'console.log()', 1),
-  _Snippet('arrow', '() =>', '(x) => x'),
-  _Snippet('new', 'new Map()', 'new Map()'),
-  _Snippet('set', 'new Set()', 'new Set()'),
-  _Snippet('map', '.map()', '.map((x) => x)', 1),
-  _Snippet('filter', '.filter()', '.filter((x) => )', 1),
-  _Snippet('reduce', '.reduce()', '.reduce((acc, x) => acc, 0)', 2),
-  _Snippet('typeof', 'typeof', 'typeof '),
+  _Snippet('console', 'log', 'console.log()', 1),
+  _Snippet('arrow', '=>', '(x) => x'),
+  _Snippet('map', 'Map', 'new Map()'),
+  _Snippet('set', 'Set', 'new Set()'),
 ];
 
 // ═══════════════════════════════════════════════════════════════
-// Code editor screen
+// Screen
 // ═══════════════════════════════════════════════════════════════
 
 class CodeEditorScreen extends ConsumerStatefulWidget {
@@ -85,31 +75,21 @@ class CodeEditorScreen extends ConsumerStatefulWidget {
 
 class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
   late Problem _problem;
-  late _SyntaxController _codeController;
-  late FocusNode _codeFocusNode;
+  late _SyntaxController _code;
+  late FocusNode _focus;
 
-  String _language = 'python';
-  bool _submitted = false;
-  bool _correct = false;
-  bool _isRunning = false;
-  List<_Snippet> _suggestions = [];
+  String _lang = 'python';
+  bool _showHint = false;
+  bool _running = false;
+  String? _status; // 'passed' | 'failed' | null
+  int? _passed;
+  int? _total;
+  String? _errorMsg;
+  List<_Snippet> _suggestions = const [];
+  bool _showDust = false;
 
   List<_Snippet> get _activeSnippets =>
-      _language == 'python' ? _pythonSnippets : _jsSnippets;
-
-  // Returns the word being typed right before the cursor
-  String get _currentWord {
-    final sel = _codeController.selection;
-    if (!sel.isValid || !sel.isCollapsed) return '';
-    final text = _codeController.text;
-    final offset = sel.baseOffset;
-    if (offset == 0) return '';
-    int start = offset - 1;
-    while (start >= 0 && RegExp(r'\w').hasMatch(text[start])) {
-      start--;
-    }
-    return text.substring(start + 1, offset);
-  }
+      _lang == 'python' ? _pythonSnippets : _jsSnippets;
 
   @override
   void initState() {
@@ -119,474 +99,91 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
       (p) => p.slug == widget.problemSlug,
       orElse: () => problems.first,
     );
-    _codeController = _SyntaxController(_language);
-    _codeController.text =
-        _problem.starterCode[_language] ?? 'def solve():\n    pass';
-    _codeController.addListener(_onCodeChanged);
-    _codeFocusNode = FocusNode();
+    _code = _SyntaxController(_lang);
+    _code.text = _problem.starterCode[_lang] ?? 'def solve():\n    pass';
+    _code.addListener(_onCodeChanged);
+    _focus = FocusNode();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _codeFocusNode.requestFocus();
+      _focus.requestFocus();
     });
+  }
+
+  @override
+  void dispose() {
+    _code.removeListener(_onCodeChanged);
+    _code.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  String get _currentWord {
+    final sel = _code.selection;
+    if (!sel.isValid || !sel.isCollapsed) return '';
+    final text = _code.text;
+    final offset = sel.baseOffset;
+    if (offset == 0) return '';
+    int start = offset - 1;
+    while (start >= 0 && RegExp(r'\w').hasMatch(text[start])) {
+      start--;
+    }
+    return text.substring(start + 1, offset);
   }
 
   void _onCodeChanged() {
     if (!mounted) return;
     final word = _currentWord.toLowerCase();
-    final newSugg = word.isEmpty
-        ? <_Snippet>[]
-        : _activeSnippets
-            .where((s) => s.trigger.startsWith(word))
-            .toList();
-    setState(() => _suggestions = newSugg);
+    final next = word.isEmpty
+        ? const <_Snippet>[]
+        : _activeSnippets.where((s) => s.trigger.startsWith(word)).toList();
+    if (!_listEquals(next, _suggestions)) {
+      setState(() => _suggestions = next);
+    }
   }
 
-  @override
-  void dispose() {
-    _codeController.removeListener(_onCodeChanged);
-    _codeController.dispose();
-    _codeFocusNode.dispose();
-    super.dispose();
-  }
-
-  // ── Build ───────────────────────────────────────────────────
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildTopBar(context),
-            _buildProblemHeader(context),
-            Expanded(child: _buildCodeCanvas()),
-            if (!_submitted) _buildSmartSnippetBar(),
-            if (!_submitted) _buildNavBar(),
-            _buildBottomActions(context),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Top bar ─────────────────────────────────────────────────
-
-  Widget _buildTopBar(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.space4,
-        vertical: AppSpacing.space2,
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => context.pop(),
-            child: Icon(Icons.arrow_back, color: cs.onSurface),
-          ),
-          const SizedBox(width: AppSpacing.space3),
-          Expanded(child: OwlProgressBar(progress: 0.65, height: 10)),
-          const SizedBox(width: AppSpacing.space3),
-          GestureDetector(
-            onTap: () => context.pop(),
-            child: Icon(Icons.close, color: cs.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Problem header ───────────────────────────────────────────
-
-  Widget _buildProblemHeader(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenPadding, 4, AppSpacing.screenPadding, 6,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              _problem.title,
-              style: AppTypography.h3,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Details button (opens bottom sheet)
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              _showDetailsSheet(context);
-            },
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.info_outline, size: 14, color: cs.onSurface),
-                  const SizedBox(width: 4),
-                  Text('Details',
-                      style: AppTypography.caption
-                          .copyWith(color: cs.onSurface)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Language toggle
-          _buildLanguageToggle(cs, isDark),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLanguageToggle(ColorScheme cs, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: ['python', 'javascript'].map((lang) {
-          final isSelected = _language == lang;
-          return GestureDetector(
-            onTap: () => _switchLanguage(lang),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-              ),
-              child: Text(
-                lang == 'python' ? 'Py' : 'JS',
-                style: AppTypography.caption.copyWith(
-                  color: isSelected ? Colors.white : cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  void _switchLanguage(String lang) {
-    if (_language == lang) return;
+  void _switchLang(String lang) {
+    if (_lang == lang) return;
     HapticFeedback.selectionClick();
     setState(() {
-      _language = lang;
-      _codeController.setLanguage(lang);
-      _codeController.text = _problem.starterCode[lang] ??
+      _lang = lang;
+      _code.setLanguage(lang);
+      _code.text = _problem.starterCode[lang] ??
           (lang == 'python'
               ? 'def solve():\n    pass'
               : 'function solve() {\n    \n}');
-      _suggestions = [];
-      _submitted = false;
-      _correct = false;
+      _suggestions = const [];
+      _status = null;
+      _showDust = false;
     });
   }
 
-  // ── Code canvas ──────────────────────────────────────────────
-
-  Widget _buildCodeCanvas() {
-    final lines = _codeController.text.split('\n');
-    final lineNumbers =
-        List.generate(lines.length, (i) => '${i + 1}').join('\n');
-
-    return GestureDetector(
-      onTap: () => _codeFocusNode.requestFocus(),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(
-          AppSpacing.screenPadding,
-          AppSpacing.space2,
-          AppSpacing.screenPadding,
-          0,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.codeBg,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.space4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 28,
-                  child: Text(
-                    lineNumbers,
-                    style: AppTypography.codeBody.copyWith(
-                      color: AppColors.codeComment,
-                      fontSize: 13,
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _codeController,
-                    focusNode: _codeFocusNode,
-                    readOnly: _submitted,
-                    showCursor: true,
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    style: AppTypography.codeBody.copyWith(fontSize: 13),
-                    cursorColor: AppColors.primary,
-                    cursorWidth: 2,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                      border: InputBorder.none,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Smart snippet bar ────────────────────────────────────────
-  // Suggestions matching current word are shown first and highlighted.
-  // Remaining snippets follow as dimmer quick-access chips.
-
-  Widget _buildSmartSnippetBar() {
-    final suggested = _suggestions;
-    final others = _activeSnippets
-        .where((s) => !suggested.contains(s))
-        .toList();
-    final all = [...suggested, ...others];
-
-    return SizedBox(
-      height: 44,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.screenPadding, vertical: 4),
-        itemCount: all.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (ctx, i) {
-          final snippet = all[i];
-          final isHighlighted = suggested.contains(snippet);
-          return _SnippetChip(
-            snippet: snippet,
-            highlighted: isHighlighted,
-            onTap: () {
-              HapticFeedback.selectionClick();
-              _insertSnippet(snippet);
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  // ── Navigation bar (arrow keys + Tab + Enter) ────────────────
-
-  Widget _buildNavBar() {
-    return Container(
-      height: 40,
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-      child: Row(
-        children: [
-          _NavKey(icon: Icons.arrow_back, onTap: () => _moveCursor(-1)),
-          _NavKey(icon: Icons.arrow_forward, onTap: () => _moveCursor(1)),
-          _NavKey(icon: Icons.arrow_upward, onTap: () => _moveCursorVertical(-1)),
-          _NavKey(icon: Icons.arrow_downward, onTap: () => _moveCursorVertical(1)),
-          const SizedBox(width: 6),
-          _NavKey(label: 'Tab', onTap: () => _insertAtCursor('    ')),
-          _NavKey(
-              icon: Icons.keyboard_return,
-              onTap: () => _insertAtCursor('\n')),
-          const Spacer(),
-          // Backspace
-          _NavKey(
-              icon: Icons.backspace_outlined,
-              onTap: () {
-                final sel = _codeController.selection;
-                if (!sel.isValid || sel.baseOffset == 0) return;
-                final text = _codeController.text;
-                final start = sel.isCollapsed ? sel.baseOffset - 1 : sel.start;
-                final end = sel.end;
-                final newText = text.replaceRange(start, end, '');
-                _codeController.value = TextEditingValue(
-                  text: newText,
-                  selection: TextSelection.collapsed(offset: start),
-                );
-              }),
-        ],
-      ),
-    );
-  }
-
-  // ── Bottom actions (Hint | Run | Check/Continue) ─────────────
-
-  Widget _buildBottomActions(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenPadding,
-        8,
-        AppSpacing.screenPadding,
-        AppSpacing.space4,
-      ),
-      child: Row(
-        children: [
-          if (!_submitted) ...[
-            // Hint icon button
-            _IconAction(
-              icon: Icons.lightbulb_outline,
-              color: AppColors.warning,
-              onTap: () => _showHintSheet(context),
-            ),
-            const SizedBox(width: 8),
-            // Run custom test button
-            _IconAction(
-              icon: Icons.play_circle_outline,
-              color: AppColors.primary,
-              onTap: _isRunning ? null : () => _showCustomRunSheet(context),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: OwlButton(
-              label: _submitted
-                  ? (_correct ? 'Continue' : 'Try Again')
-                  : 'Submit',
-              backgroundColor:
-                  _submitted && _correct ? AppColors.success : null,
-              shadowColor:
-                  _submitted && _correct ? AppColors.successDark : null,
-              isLoading: _isRunning,
-              onPressed: _isRunning
-                  ? null
-                  : () {
-                      if (_submitted) {
-                        if (_correct) {
-                          context.pop();
-                        } else {
-                          setState(() {
-                            _submitted = false;
-                            _correct = false;
-                          });
-                        }
-                      } else {
-                        _submit();
-                      }
-                    },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Cursor helpers ───────────────────────────────────────────
-
-  void _insertAtCursor(String text) {
-    final sel = _codeController.selection;
-    if (!sel.isValid) {
-      _codeController.text += text;
-      return;
-    }
-    final current = _codeController.text;
-    final newText = current.replaceRange(sel.start, sel.end, text);
-    final newOffset = sel.start + text.length;
-    _codeController.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: newOffset),
-    );
-  }
-
-  void _insertSnippet(_Snippet snippet) {
+  void _insertSnippet(_Snippet s) {
     final word = _currentWord;
-    final sel = _codeController.selection;
+    final sel = _code.selection;
     if (!sel.isValid) return;
-    final text = _codeController.text;
-    final cursorPos = sel.baseOffset;
-    final wordStart = cursorPos - word.length;
-
-    final newText =
-        text.replaceRange(wordStart, cursorPos, snippet.template);
-    final newCursor =
-        wordStart + snippet.template.length - snippet.cursorFromEnd;
-
-    _codeController.value = TextEditingValue(
+    final text = _code.text;
+    final cursor = sel.baseOffset;
+    final start = cursor - word.length;
+    final newText = text.replaceRange(start, cursor, s.template);
+    final newCursor = start + s.template.length - s.cursorFromEnd;
+    _code.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(offset: newCursor.clamp(0, newText.length)),
+      selection:
+          TextSelection.collapsed(offset: newCursor.clamp(0, newText.length)),
     );
   }
-
-  void _moveCursor(int delta) {
-    final sel = _codeController.selection;
-    if (!sel.isValid) return;
-    final newOffset =
-        (sel.baseOffset + delta).clamp(0, _codeController.text.length);
-    _codeController.selection =
-        TextSelection.collapsed(offset: newOffset);
-  }
-
-  void _moveCursorVertical(int lineDelta) {
-    final text = _codeController.text;
-    final offset = _codeController.selection.baseOffset;
-    if (!_codeController.selection.isValid) return;
-
-    final beforeCursor = text.substring(0, offset);
-    final linesBefore = beforeCursor.split('\n');
-    final currentLine = linesBefore.length - 1;
-    final currentCol = linesBefore.last.length;
-
-    final allLines = text.split('\n');
-    final targetLine =
-        (currentLine + lineDelta).clamp(0, allLines.length - 1);
-    if (targetLine == currentLine) return;
-
-    final targetCol = currentCol.clamp(0, allLines[targetLine].length);
-    int newOffset = 0;
-    for (int i = 0; i < targetLine; i++) {
-      newOffset += allLines[i].length + 1;
-    }
-    newOffset += targetCol;
-
-    _codeController.selection =
-        TextSelection.collapsed(offset: newOffset);
-  }
-
-  // ── Submit ───────────────────────────────────────────────────
 
   Future<void> _submit() async {
     HapticFeedback.mediumImpact();
-    _codeFocusNode.unfocus();
-    setState(() => _isRunning = true);
+    _focus.unfocus();
+    setState(() => _running = true);
 
     final api = ref.read(apiServiceProvider);
     Map<String, dynamic> result;
-
     try {
       result = await api.submitCode(
         problemSlug: _problem.slug,
-        language: _language,
-        code: _codeController.text,
+        language: _lang,
+        code: _code.text,
       );
     } on ApiException catch (e) {
       result = {
@@ -594,7 +191,6 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
         'test_cases_passed': 0,
         'test_cases_total': 0,
         'error': e.message,
-        'test_results': [],
       };
     } catch (e) {
       result = {
@@ -602,168 +198,492 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
         'test_cases_passed': 0,
         'test_cases_total': 0,
         'error': e.toString(),
-        'test_results': [],
       };
     }
 
     final accepted = result['status'] == 'accepted';
+    if (!mounted) return;
 
     setState(() {
-      _isRunning = false;
-      _submitted = true;
-      _correct = accepted;
+      _running = false;
+      _status = accepted ? 'passed' : 'failed';
+      _passed = result['test_cases_passed'] as int?;
+      _total = result['test_cases_total'] as int?;
+      _errorMsg = result['error'] as String?;
+      if (accepted) _showDust = true;
     });
 
-    if (!mounted) return;
     if (accepted) {
       ref.read(userProfileProvider.notifier).addXp(15);
-      showXpToast(context, 15);
     }
-
-    _showResultSheet(context, result);
   }
 
-  // ── Sheets ───────────────────────────────────────────────────
+  void _openResults() {
+    context.push('/accepted/${_problem.slug}');
+  }
 
-  void _showDetailsSheet(BuildContext context) {
-    final visibleCases =
-        _problem.testCases.where((tc) => !tc.isHidden).toList();
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.codeBg,
+      resizeToAvoidBottomInset: true,
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                _TopBar(
+                  problem: _problem,
+                  lang: _lang,
+                  onClose: () => context.pop(),
+                  onSwitchLang: _switchLang,
+                ),
+                _PromptStrip(
+                  problem: _problem,
+                  showHint: _showHint,
+                  onToggleHint: () => setState(() => _showHint = !_showHint),
+                ),
+                if (_showHint && _problem.hints.isNotEmpty) _HintBanner(text: _problem.hints.first),
+                Expanded(child: _CodeCanvas(
+                  controller: _code,
+                  focus: _focus,
+                )),
+                if (_suggestions.isNotEmpty && _status == null)
+                  _SuggestionBar(
+                    suggestions: _suggestions,
+                    onTap: _insertSnippet,
+                  ),
+                if (_status == 'failed') _FailureBanner(
+                  passed: _passed,
+                  total: _total,
+                  message: _errorMsg,
+                ),
+                _SubmitBar(
+                  status: _status,
+                  running: _running,
+                  onSubmit: _submit,
+                  onViewResults: _openResults,
+                ),
+              ],
+            ),
+          ),
+          if (_showDust)
+            Positioned.fill(
+              child: CodeDustOverlay(show: _showDust),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.92,
-        builder: (ctx, scrollCtrl) {
-          return DefaultTabController(
-            length: 2,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Theme.of(ctx).scaffoldBackgroundColor,
-                borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(AppRadius.xl)),
+// ═══════════════════════════════════════════════════════════════
+// Top bar
+// ═══════════════════════════════════════════════════════════════
+
+class _TopBar extends StatelessWidget {
+  final Problem problem;
+  final String lang;
+  final VoidCallback onClose;
+  final ValueChanged<String> onSwitchLang;
+
+  const _TopBar({
+    required this.problem,
+    required this.lang,
+    required this.onClose,
+    required this.onSwitchLang,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final eyebrowColor = Colors.white.withValues(alpha: 0.45);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.white.withValues(alpha: 0.06),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          _SquareBtn(
+            icon: CkIcon.close(
+              size: 17,
+              color: Colors.white.withValues(alpha: 0.75),
+            ),
+            onTap: onClose,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${problem.categoryId.toUpperCase()} · ${_diffLabel(problem.difficulty)}',
+                  style: AppTypography.codeBody.copyWith(
+                    color: eyebrowColor,
+                    fontSize: 11,
+                    letterSpacing: 0.06 * 11,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  problem.title,
+                  style: AppTypography.h3.copyWith(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _LangToggle(lang: lang, onSwitch: onSwitchLang),
+        ],
+      ),
+    );
+  }
+
+  static String _diffLabel(Difficulty d) => switch (d) {
+        Difficulty.easy => 'EASY',
+        Difficulty.medium => 'MEDIUM',
+        Difficulty.hard => 'HARD',
+      };
+}
+
+class _SquareBtn extends StatelessWidget {
+  final Widget icon;
+  final VoidCallback onTap;
+  const _SquareBtn({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        alignment: Alignment.center,
+        child: icon,
+      ),
+    );
+  }
+}
+
+class _LangToggle extends StatelessWidget {
+  final String lang;
+  final ValueChanged<String> onSwitch;
+  const _LangToggle({required this.lang, required this.onSwitch});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _langBtn('python', 'Py'),
+          _langBtn('javascript', 'JS'),
+        ],
+      ),
+    );
+  }
+
+  Widget _langBtn(String key, String label) {
+    final active = lang == key;
+    return GestureDetector(
+      onTap: () => onSwitch(key),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 28,
+        constraints: const BoxConstraints(minWidth: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: active ? AppColors.primary.withValues(alpha: 0.25) : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: AppTypography.codeBody.copyWith(
+            color: active ? Colors.white : Colors.white.withValues(alpha: 0.55),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Prompt strip + hint
+// ═══════════════════════════════════════════════════════════════
+
+class _PromptStrip extends StatelessWidget {
+  final Problem problem;
+  final bool showHint;
+  final VoidCallback onToggleHint;
+
+  const _PromptStrip({
+    required this.problem,
+    required this.showHint,
+    required this.onToggleHint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.white.withValues(alpha: 0.06),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              problem.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.body.copyWith(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 12,
+                height: 1.5,
               ),
-              child: Column(
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onToggleHint();
+            },
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: showHint
+                    ? AppColors.gold.withValues(alpha: 0.15)
+                    : Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: showHint
+                      ? AppColors.gold.withValues(alpha: 0.4)
+                      : Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Drag handle
-                  Container(
-                    margin:
-                        const EdgeInsets.symmetric(vertical: 10),
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Theme.of(ctx)
-                          .colorScheme
-                          .outline
-                          .withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                  CkIcon.hint(
+                    size: 13,
+                    color: showHint
+                        ? AppColors.gold
+                        : Colors.white.withValues(alpha: 0.75),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(_problem.title,
-                              style: AppTypography.h3,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                        const SizedBox(width: 8),
-                        _difficultyPill(
-                            _problem.difficulty),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TabBar(
-                    indicatorColor: AppColors.primary,
-                    labelColor: AppColors.primary,
-                    unselectedLabelColor: Theme.of(ctx)
-                        .colorScheme
-                        .onSurfaceVariant,
-                    tabs: const [
-                      Tab(text: 'Problem'),
-                      Tab(text: 'Examples'),
-                    ],
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        // ── Problem tab
-                        ListView(
-                          controller: scrollCtrl,
-                          padding: const EdgeInsets.all(20),
-                          children: [
-                            Text(_problem.description,
-                                style: AppTypography.body),
-                            if (_problem.constraints.isNotEmpty) ...[
-                              const SizedBox(height: 16),
-                              Text('Constraints',
-                                  style: AppTypography.label),
-                              const SizedBox(height: 8),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.codeBg,
-                                  borderRadius:
-                                      BorderRadius.circular(AppRadius.md),
-                                ),
-                                child: Text(
-                                  _problem.constraints,
-                                  style: AppTypography.codeBody
-                                      .copyWith(fontSize: 12),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        // ── Examples tab
-                        ListView(
-                          controller: scrollCtrl,
-                          padding: const EdgeInsets.all(20),
-                          children: visibleCases.isEmpty
-                              ? [
-                                  Text('No public examples.',
-                                      style: AppTypography.body)
-                                ]
-                              : visibleCases
-                                  .asMap()
-                                  .entries
-                                  .map((e) {
-                                    final tc = e.value;
-                                    final n = e.key + 1;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(
-                                          bottom: 20),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Example $n',
-                                              style: AppTypography.label),
-                                          const SizedBox(height: 8),
-                                          _CodeBlock(
-                                              label: 'Input',
-                                              content: tc.input),
-                                          const SizedBox(height: 6),
-                                          _CodeBlock(
-                                              label: 'Output',
-                                              content: tc.expectedOutput),
-                                        ],
-                                      ),
-                                    );
-                                  })
-                                  .toList(),
-                        ),
-                      ],
+                  const SizedBox(width: 4),
+                  Text(
+                    'Hint',
+                    style: AppTypography.caption.copyWith(
+                      color: showHint
+                          ? AppColors.gold
+                          : Colors.white.withValues(alpha: 0.75),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HintBanner extends StatelessWidget {
+  final String text;
+  const _HintBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.gold.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        text,
+        style: AppTypography.body.copyWith(
+          color: Colors.white.withValues(alpha: 0.85),
+          fontSize: 12,
+          height: 1.5,
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Code canvas with gutter
+// ═══════════════════════════════════════════════════════════════
+
+class _CodeCanvas extends StatelessWidget {
+  final _SyntaxController controller;
+  final FocusNode focus;
+
+  const _CodeCanvas({required this.controller, required this.focus});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => focus.requestFocus(),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Gutter(controller: controller),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 12, 12, 12),
+                child: TextField(
+                  controller: controller,
+                  focusNode: focus,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  style: AppTypography.codeBody.copyWith(fontSize: 13),
+                  cursorColor: Colors.white,
+                  cursorWidth: 2,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Gutter extends StatelessWidget {
+  final TextEditingController controller;
+  const _Gutter({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (_, __) {
+        final lines = controller.text.split('\n').length;
+        return Container(
+          width: 38,
+          color: AppColors.codeBgAlt,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(
+              lines,
+              (i) => SizedBox(
+                height: 20,
+                child: Text(
+                  '${i + 1}',
+                  style: AppTypography.codeBody.copyWith(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    fontSize: 12,
+                    height: 20 / 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Suggestion chips (accessory bar)
+// ═══════════════════════════════════════════════════════════════
+
+class _SuggestionBar extends StatelessWidget {
+  final List<_Snippet> suggestions;
+  final ValueChanged<_Snippet> onTap;
+
+  const _SuggestionBar({required this.suggestions, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.codeBgAlt,
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+      ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        itemCount: suggestions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final s = suggestions[i];
+          return GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onTap(s);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                s.label,
+                style: AppTypography.codeBody.copyWith(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           );
@@ -771,424 +691,116 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
       ),
     );
   }
+}
 
-  void _showResultSheet(BuildContext context, Map<String, dynamic> result) {
-    final status = result['status'] as String? ?? 'runtime_error';
-    final passed = result['test_cases_passed'] as int? ?? 0;
-    final total = result['test_cases_total'] as int? ?? 0;
-    final runtimeMs = result['runtime_ms'] as int?;
-    final errorMsg = result['error'] as String?;
-    final stdout = result['stdout'] as String?;
-    final testResults = List<Map<String, dynamic>>.from(
-        result['test_results'] as List? ?? []);
+// ═══════════════════════════════════════════════════════════════
+// Submit bar + failure banner
+// ═══════════════════════════════════════════════════════════════
 
-    final isAccepted = status == 'accepted';
-    final statusColor = switch (status) {
-      'accepted' => AppColors.success,
-      'wrong_answer' => AppColors.error,
-      'time_limit' => AppColors.warning,
-      _ => AppColors.error,
-    };
-    final statusLabel = switch (status) {
-      'accepted' => 'Accepted',
-      'wrong_answer' => 'Wrong Answer',
-      'time_limit' => 'Time Limit Exceeded',
-      'runtime_error' => 'Runtime Error',
-      _ => status,
-    };
+class _FailureBanner extends StatelessWidget {
+  final int? passed;
+  final int? total;
+  final String? message;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
-      ),
-      builder: (ctx) {
-        final bottomPad = MediaQuery.of(ctx).viewPadding.bottom;
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.space6,
-            AppSpacing.space6,
-            AppSpacing.space6,
-            AppSpacing.space6 + bottomPad,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Status banner
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.space4,
-                    vertical: AppSpacing.space3),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  border: Border.all(color: statusColor, width: 1.5),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      isAccepted ? Icons.check_circle : Icons.cancel,
-                      color: statusColor,
-                      size: 22,
-                    ),
-                    const SizedBox(width: AppSpacing.space2),
-                    Text(
-                      statusLabel,
-                      style: AppTypography.bodyLg.copyWith(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700),
-                    ),
-                    const Spacer(),
-                    if (runtimeMs != null)
-                      Text('${runtimeMs}ms',
-                          style: AppTypography.caption
-                              .copyWith(color: statusColor)),
-                  ],
-                ),
-              ),
+  const _FailureBanner({this.passed, this.total, this.message});
 
-              const SizedBox(height: AppSpacing.space4),
-              Text('Test cases: $passed / $total passed',
-                  style: AppTypography.label),
-
-              // stdout / console output
-              if (stdout != null && stdout.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.space4),
-                Text('Console Output', style: AppTypography.label),
-                const SizedBox(height: AppSpacing.space2),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppSpacing.space3),
-                  decoration: BoxDecoration(
-                    color: AppColors.codeBg,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: Text(
-                    stdout,
-                    style: AppTypography.codeBody.copyWith(fontSize: 12),
-                  ),
-                ),
-              ],
-
-              // Error message
-              if (errorMsg != null && !isAccepted) ...[
-                const SizedBox(height: AppSpacing.space3),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppSpacing.space3),
-                  decoration: BoxDecoration(
-                    color: AppColors.codeBg,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: Text(
-                    errorMsg,
-                    style: AppTypography.codeBody
-                        .copyWith(fontSize: 12, color: AppColors.error),
-                  ),
-                ),
-              ],
-
-              // First failing test case
-              if (!isAccepted && testResults.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.space4),
-                Text('First Failure', style: AppTypography.label),
-                const SizedBox(height: AppSpacing.space2),
-                () {
-                  final fail = testResults.firstWhere(
-                    (t) => t['passed'] != true,
-                    orElse: () => testResults.first,
-                  );
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _CodeBlock(
-                          label: 'Input',
-                          content: fail['input']?.toString() ?? ''),
-                      const SizedBox(height: AppSpacing.space2),
-                      _CodeBlock(
-                          label: 'Expected',
-                          content: fail['expected']?.toString() ?? ''),
-                      const SizedBox(height: AppSpacing.space2),
-                      _CodeBlock(
-                          label: 'Got',
-                          content: fail['actual']?.toString() ?? '-'),
-                    ],
-                  );
-                }(),
-              ],
-
-              const SizedBox(height: AppSpacing.space6),
-              OwlButton(
-                label: isAccepted ? 'Continue' : 'Try Again',
-                backgroundColor:
-                    isAccepted ? AppColors.success : null,
-                shadowColor:
-                    isAccepted ? AppColors.successDark : null,
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  if (isAccepted) context.pop();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showHintSheet(BuildContext context) {
-    final hints = _problem.hints;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
-      ),
-      builder: (ctx) {
-        final bottomPad = MediaQuery.of(ctx).viewPadding.bottom;
-        int hintLevel = 0;
-
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                AppSpacing.space6,
-                AppSpacing.space6,
-                AppSpacing.space6,
-                AppSpacing.space6 + bottomPad,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.lightbulb_outline,
-                          color: AppColors.warning, size: 24),
-                      const SizedBox(width: 8),
-                      Text('Hints', style: AppTypography.h2),
-                      const Spacer(),
-                      if (hints.isNotEmpty)
-                        Text(
-                          '${hintLevel + 1} / ${hints.length}',
-                          style: AppTypography.caption.copyWith(
-                              color: Theme.of(ctx)
-                                  .colorScheme
-                                  .onSurfaceVariant),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.space4),
-                  if (hints.isEmpty)
-                    Text(
-                      'Think about what data structure gives you O(1) lookups. '
-                      'Walk through the array once, storing what you\'ve seen.',
-                      style: AppTypography.body,
-                    )
-                  else
-                    ...List.generate(
-                      hintLevel + 1,
-                      (i) => Padding(
-                        padding: const EdgeInsets.only(
-                            bottom: AppSpacing.space3),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(AppSpacing.space3),
-                          decoration: BoxDecoration(
-                            color: AppColors.warning
-                                .withValues(alpha: 0.08),
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.md),
-                            border: Border.all(
-                                color: AppColors.warning
-                                    .withValues(alpha: 0.3)),
-                          ),
-                          child: Text(hints[i],
-                              style: AppTypography.body),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: AppSpacing.space4),
-                  Row(
-                    children: [
-                      if (hints.isNotEmpty &&
-                          hintLevel < hints.length - 1)
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () =>
-                                setSheetState(() => hintLevel++),
-                            style: OutlinedButton.styleFrom(
-                              minimumSize:
-                                  const Size.fromHeight(48),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                    AppRadius.xxl),
-                              ),
-                            ),
-                            child: Text('Next Hint',
-                                style: AppTypography.label),
-                          ),
-                        ),
-                      if (hints.isNotEmpty &&
-                          hintLevel < hints.length - 1)
-                        const SizedBox(width: AppSpacing.space3),
-                      Expanded(
-                        child: OwlButton(
-                          label: 'Got it',
-                          onPressed: () => Navigator.pop(ctx),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showCustomRunSheet(BuildContext context) {
-    final inputCtrl = TextEditingController(
-      text: _problem.testCases.isNotEmpty
-          ? _problem.testCases.first.input
-          : '',
-    );
-    bool running = false;
-    Map<String, dynamic>? runResult;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
-      ),
-      builder: (ctx) {
-        final bottomPad = MediaQuery.of(ctx).viewPadding.bottom +
-            MediaQuery.of(ctx).viewInsets.bottom;
-
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                AppSpacing.space6,
-                AppSpacing.space6,
-                AppSpacing.space6,
-                AppSpacing.space6 + bottomPad,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.play_circle_outline,
-                          color: AppColors.primary, size: 22),
-                      const SizedBox(width: 8),
-                      Text('Custom Test', style: AppTypography.h2),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.space4),
-                  Text('Input', style: AppTypography.label),
-                  const SizedBox(height: AppSpacing.space2),
-                  TextField(
-                    controller: inputCtrl,
-                    maxLines: 3,
-                    style: AppTypography.codeBody.copyWith(fontSize: 13),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: AppColors.codeBg,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppRadius.md),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.all(12),
-                    ),
-                  ),
-                  if (runResult != null) ...[
-                    const SizedBox(height: AppSpacing.space4),
-                    if ((runResult!['stdout'] as String? ?? '')
-                        .isNotEmpty) ...[
-                      Text('Console', style: AppTypography.label),
-                      const SizedBox(height: AppSpacing.space2),
-                      _CodeBlock(
-                          label: '',
-                          content: runResult!['stdout'] as String),
-                      const SizedBox(height: AppSpacing.space3),
-                    ],
-                    Text('Output', style: AppTypography.label),
-                    const SizedBox(height: AppSpacing.space2),
-                    _CodeBlock(
-                      label: runResult!['status'] as String? ?? '',
-                      content: runResult!['actual'] as String? ??
-                          runResult!['error'] as String? ??
-                          '-',
-                    ),
-                  ],
-                  const SizedBox(height: AppSpacing.space5),
-                  OwlButton(
-                    label: running ? 'Running…' : 'Run',
-                    isLoading: running,
-                    onPressed: running
-                        ? null
-                        : () async {
-                            setSheetState(() {
-                              running = true;
-                              runResult = null;
-                            });
-                            final api = ref.read(apiServiceProvider);
-                            final res = await api.runCustomTest(
-                              language: _language,
-                              code: _codeController.text,
-                              testInput: inputCtrl.text,
-                            );
-                            setSheetState(() {
-                              running = false;
-                              runResult = res;
-                            });
-                          },
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // ── Helpers ──────────────────────────────────────────────────
-
-  Widget _difficultyPill(Difficulty d) {
-    final (label, color) = switch (d) {
-      Difficulty.easy => ('Easy', AppColors.success),
-      Difficulty.medium => ('Medium', AppColors.warning),
-      Difficulty.hard => ('Hard', AppColors.error),
-    };
+  @override
+  Widget build(BuildContext context) {
+    final text = message != null && message!.isNotEmpty
+        ? message!
+        : '${(total ?? 3) - (passed ?? 0)} of ${total ?? 3} tests failed — check your return path.';
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppRadius.full),
+        color: AppColors.errorDark,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.errorDark.withValues(alpha: 0.4),
+            offset: const Offset(0, 10),
+            blurRadius: 28,
+          ),
+        ],
       ),
-      child: Text(label,
-          style: AppTypography.caption.copyWith(
-              color: color, fontWeight: FontWeight.w700)),
+      child: Row(
+        children: [
+          const CkIcon.close(size: 16, color: Colors.white),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.body.copyWith(
+                color: Colors.white,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubmitBar extends StatelessWidget {
+  final String? status;
+  final bool running;
+  final VoidCallback onSubmit;
+  final VoidCallback onViewResults;
+
+  const _SubmitBar({
+    required this.status,
+    required this.running,
+    required this.onSubmit,
+    required this.onViewResults,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final isPassed = status == 'passed';
+    final isFailed = status == 'failed';
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(12, 10, 12, 12 + bottomPad),
+      decoration: BoxDecoration(
+        color: AppColors.codeBg,
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: isPassed
+                ? OwlButton.success(
+                    label: 'View Results',
+                    onPressed: onViewResults,
+                    leading: const CkIcon.chevR(size: 18, color: Colors.white),
+                  )
+                : OwlButton(
+                    label: running
+                        ? 'Running…'
+                        : isFailed
+                            ? 'Try Again'
+                            : 'Run & Submit',
+                    isLoading: running,
+                    onPressed: running ? null : onSubmit,
+                    leading: running
+                        ? null
+                        : const CkIcon.run(size: 16, color: Colors.white),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Multi-language syntax-highlighting controller
+// Syntax highlighting controller (unchanged)
 // ═══════════════════════════════════════════════════════════════
 
 class _SyntaxController extends TextEditingController {
@@ -1205,8 +817,7 @@ class _SyntaxController extends TextEditingController {
     'while', 'do', 'switch', 'case', 'break', 'continue', 'new', 'class',
     'extends', 'import', 'export', 'default', 'this', 'typeof', 'instanceof',
     'null', 'undefined', 'true', 'false', 'try', 'catch', 'finally', 'throw',
-    'async', 'await', 'of', 'in', 'from', 'console', 'map', 'filter',
-    'reduce', 'forEach', 'length', 'push', 'pop', 'shift', 'unshift',
+    'async', 'await', 'of', 'in', 'from', 'console',
   };
 
   String _language;
@@ -1222,12 +833,12 @@ class _SyntaxController extends TextEditingController {
       _language == 'python' ? _pyKeywords : _jsKeywords;
 
   static final _tokenPattern = RegExp(
-    r'(#[^\n]*|\/\/[^\n]*)'     // comments (py + js)
+    r'(#[^\n]*|\/\/[^\n]*)'
     r"|('(?:[^'\\]|\\.)*'|"
     r'"(?:[^"\\]|\\.)*"'
-    r'|`(?:[^`\\]|\\.)*`)'      // strings + template literals
-    r'|(\b\d+(?:\.\d+)?\b)'     // numbers
-    r'|(\b\w+\b)'               // identifiers / keywords
+    r'|`(?:[^`\\]|\\.)*`)'
+    r'|(\b\d+(?:\.\d+)?\b)'
+    r'|(\b\w+\b)'
     r'|(\s+)'
     r'|(.)',
   );
@@ -1240,7 +851,6 @@ class _SyntaxController extends TextEditingController {
   }) {
     final base = AppTypography.codeBody.copyWith(fontSize: 13);
     final spans = <TextSpan>[];
-
     for (final match in _tokenPattern.allMatches(text)) {
       final m = match.group(0)!;
       TextStyle ts;
@@ -1257,173 +867,15 @@ class _SyntaxController extends TextEditingController {
       }
       spans.add(TextSpan(text: m, style: ts));
     }
-
     if (spans.isEmpty) spans.add(TextSpan(text: text, style: base));
     return TextSpan(children: spans, style: style);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Small UI components
-// ═══════════════════════════════════════════════════════════════
-
-class _SnippetChip extends StatelessWidget {
-  final _Snippet snippet;
-  final bool highlighted;
-  final VoidCallback onTap;
-
-  const _SnippetChip({
-    required this.snippet,
-    required this.highlighted,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: highlighted
-              ? AppColors.primary
-              : cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: highlighted
-              ? null
-              : Border.all(color: cs.outline.withValues(alpha: 0.6)),
-        ),
-        child: Text(
-          snippet.label,
-          style: AppTypography.label.copyWith(
-            color: highlighted ? Colors.white : cs.onSurface,
-            fontSize: 12,
-          ),
-        ),
-      ),
-    );
+bool _listEquals(List<_Snippet> a, List<_Snippet> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (!identical(a[i], b[i]) && a[i].trigger != b[i].trigger) return false;
   }
-}
-
-class _NavKey extends StatelessWidget {
-  final IconData? icon;
-  final String? label;
-  final VoidCallback? onTap;
-
-  const _NavKey({this.icon, this.label, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: GestureDetector(
-        onTap: onTap == null
-            ? null
-            : () {
-                HapticFeedback.selectionClick();
-                onTap!();
-              },
-        child: Container(
-          height: 32,
-          constraints: const BoxConstraints(minWidth: 36),
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: BoxDecoration(
-            color: onTap == null
-                ? cs.surfaceContainerHighest.withValues(alpha: 0.4)
-                : cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            border: Border.all(
-                color: cs.outline.withValues(alpha: 0.5), width: 0.5),
-          ),
-          alignment: Alignment.center,
-          child: icon != null
-              ? Icon(icon, size: 16,
-                  color: onTap == null
-                      ? cs.onSurface.withValues(alpha: 0.3)
-                      : cs.onSurface)
-              : Text(label!,
-                  style: AppTypography.label
-                      .copyWith(fontSize: 11, color: cs.onSurface)),
-        ),
-      ),
-    );
-  }
-}
-
-class _IconAction extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-
-  const _IconAction({
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap == null
-          ? null
-          : () {
-              HapticFeedback.selectionClick();
-              onTap!();
-            },
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(AppRadius.xxl),
-          border: Border.all(color: cs.outline.withValues(alpha: 0.6)),
-        ),
-        child: Icon(icon,
-            color: onTap == null
-                ? color.withValues(alpha: 0.3)
-                : color,
-            size: 22),
-      ),
-    );
-  }
-}
-
-class _CodeBlock extends StatelessWidget {
-  final String label;
-  final String content;
-
-  const _CodeBlock({required this.label, required this.content});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (label.isNotEmpty) ...[
-          Text(label,
-              style: AppTypography.caption
-                  .copyWith(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 4),
-        ],
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.codeBg,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-          ),
-          child: Text(
-            content,
-            style: AppTypography.codeBody.copyWith(fontSize: 13),
-          ),
-        ),
-      ],
-    );
-  }
+  return true;
 }

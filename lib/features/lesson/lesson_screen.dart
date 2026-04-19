@@ -2,29 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/widgets/chapter_glyph.dart';
+import '../../core/widgets/ck_icons.dart';
 import '../../core/widgets/owl_button.dart';
-import '../../core/widgets/progress_bar.dart';
 import '../../models/problem.dart';
 import '../../providers/app_providers.dart';
 
-// ═══════════════════════════════════════════════════════════════
-// Data
-// ═══════════════════════════════════════════════════════════════
-
 class _ChatMsg {
-  final String role; // 'user' or 'ai'
+  final String role; // 'user' | 'ai'
   final String text;
   const _ChatMsg({required this.role, required this.text});
 }
-
-// ═══════════════════════════════════════════════════════════════
-// Lesson flow: concept → approach quiz → complexity quiz →
-//              AI tutor chat → time to code
-// ═══════════════════════════════════════════════════════════════
 
 class LessonScreen extends ConsumerStatefulWidget {
   final String problemSlug;
@@ -37,21 +30,16 @@ class LessonScreen extends ConsumerStatefulWidget {
 class _LessonScreenState extends ConsumerState<LessonScreen> {
   static const _totalSteps = 5;
 
-  // 0 = concept, 1 = approach quiz, 2 = complexity quiz,
-  // 3 = AI tutor chat, 4 = time to code
   int _step = 0;
-
-  // Quiz state (shared between step 1 and 2)
-  int? _selectedAnswer;
+  int? _selected;
   bool _answered = false;
 
-  // Chat state (step 3)
-  final List<_ChatMsg> _chatMessages = [];
-  final _msgController = TextEditingController();
-  final _scrollController = ScrollController();
+  final _chat = <_ChatMsg>[];
+  final _msgCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
   bool _aiTyping = false;
-  int _aiResponseCount = 0;
-  static const _maxAiResponses = 3;
+  int _aiResponses = 0;
+  static const _maxAi = 3;
 
   late Problem _problem;
 
@@ -67,36 +55,45 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
 
   @override
   void dispose() {
-    _msgController.dispose();
-    _scrollController.dispose();
+    _msgCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
   double get _progress => (_step + 1) / _totalSteps;
-  bool get _chatDone => _aiResponseCount >= _maxAiResponses;
+  bool get _chatDone => _aiResponses >= _maxAi;
 
-  void _nextStep() {
+  void _next() {
     setState(() {
       _step++;
-      _selectedAnswer = null;
+      _selected = null;
       _answered = false;
     });
   }
 
-  // When entering the chat step, seed the AI's opening question
-  void _initChat() {
-    if (_chatMessages.isNotEmpty) return;
+  void _prev() {
+    if (_step == 0) {
+      context.pop();
+    } else {
+      setState(() {
+        _step--;
+        _selected = null;
+        _answered = false;
+      });
+    }
+  }
+
+  void _seedOpeningChat() {
+    if (_chat.isNotEmpty) return;
     setState(() {
-      _chatMessages.add(_ChatMsg(
+      _chat.add(_ChatMsg(
         role: 'ai',
-        text: 'Before we open the editor, let\'s think through "${_problem.title}" together! '
-            'What\'s your first instinct for solving this? '
-            'Any data structure or approach come to mind?',
+        text:
+            'Before we open the editor, let\'s think through "${_problem.title}" together. '
+            'What\'s your first instinct — any data structure or approach come to mind?',
       ));
     });
   }
-
-  // ── Build ─────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -104,561 +101,129 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.space4,
-                vertical: AppSpacing.space2,
-              ),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => context.pop(),
-                    child: const Icon(Icons.arrow_back),
-                  ),
-                  const SizedBox(width: AppSpacing.space3),
-                  Expanded(
-                    child: OwlProgressBar(progress: _progress, height: 10),
-                  ),
-                  const SizedBox(width: AppSpacing.space3),
-                  GestureDetector(
-                    onTap: () => context.pop(),
-                    child: Icon(Icons.close,
-                        color:
-                            Theme.of(context).colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: _step == 3
-                  ? _buildChatStep() // no animation - chat persists
-                  : AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 280),
-                      transitionBuilder: (child, anim) => SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(1, 0),
-                          end: Offset.zero,
-                        ).animate(CurvedAnimation(
-                          parent: anim,
-                          curve: Curves.easeOutQuart,
-                        )),
-                        child: child,
-                      ),
-                      child: _buildStep(),
-                    ),
-            ),
+            _TopBar(progress: _progress, step: _step + 1, total: _totalSteps, onClose: _prev),
+            Expanded(child: _buildStepBody()),
+            _buildBottomBar(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStep() {
-    switch (_step) {
-      case 0:
-        return _buildConceptCard();
-      case 1:
-        return _buildApproachQuiz();
-      case 2:
-        return _buildComplexityQuiz();
-      case 4:
-        return _buildCodePrompt();
-      default:
-        return const SizedBox.shrink();
+  Widget _buildStepBody() {
+    if (_step == 3) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _seedOpeningChat());
+      return _ChatStep(
+        chat: _chat,
+        typing: _aiTyping,
+        done: _chatDone,
+        scrollCtrl: _scrollCtrl,
+      );
     }
-  }
-
-  // ── Step 0: Concept card ──────────────────────────────────────
-
-  Widget _buildConceptCard() {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final visibleCases =
-        _problem.testCases.where((tc) => !tc.isHidden).toList();
-
-    return SingleChildScrollView(
-      key: const ValueKey('concept'),
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: AppSpacing.space4),
-          Center(
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? AppColors.primary.withValues(alpha: 0.15)
-                    : AppColors.primarySurface,
-                borderRadius: BorderRadius.circular(AppRadius.xl),
-              ),
-              child: const Icon(Icons.auto_stories,
-                  size: 52, color: AppColors.primary),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.space6),
-          _DifficultyBadge(difficulty: _problem.difficulty),
-          const SizedBox(height: AppSpacing.space3),
-          Text(_problem.title, style: AppTypography.h1),
-          const SizedBox(height: AppSpacing.space3),
-          Text(
-            _problem.description,
-            style:
-                AppTypography.bodyLg.copyWith(color: cs.onSurfaceVariant),
-          ),
-          if (_problem.constraints.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.space4),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppSpacing.space3),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(AppRadius.md),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Constraints',
-                      style: AppTypography.caption
-                          .copyWith(color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 4),
-                  Text(_problem.constraints,
-                      style:
-                          AppTypography.codeBody.copyWith(fontSize: 12)),
-                ],
-              ),
-            ),
-          ],
-          if (visibleCases.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.space6),
-            Text('Examples', style: AppTypography.h3),
-            const SizedBox(height: AppSpacing.space3),
-            ...visibleCases.asMap().entries.map((e) {
-              final tc = e.value;
-              final n = e.key + 1;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.space4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Example $n', style: AppTypography.label),
-                    const SizedBox(height: AppSpacing.space2),
-                    _ExampleBlock(label: 'Input', content: tc.input),
-                    const SizedBox(height: AppSpacing.space2),
-                    _ExampleBlock(
-                        label: 'Output', content: tc.expectedOutput),
-                  ],
-                ),
-              );
-            }),
-          ],
-          const SizedBox(height: AppSpacing.space6),
-          OwlButton(
-            label: 'Got it - let\'s learn',
-            onPressed: _nextStep,
-          ),
-          const SizedBox(height: AppSpacing.space4),
-        ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      transitionBuilder: (child, anim) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutQuart)),
+        child: FadeTransition(opacity: anim, child: child),
       ),
-    );
-  }
-
-  // ── Step 1: Approach quiz ─────────────────────────────────────
-
-  Widget _buildApproachQuiz() {
-    final quiz = _problem.lessonContent.approachQuiz;
-    if (quiz == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _nextStep());
-      return const SizedBox.shrink();
-    }
-    return _buildQuizStep(
-      key: const ValueKey('approach-quiz'),
-      label: 'Key Insight',
-      question: quiz.question,
-      options: quiz.options,
-      correctIndex: quiz.correctIndex,
-      explanation: quiz.explanation,
-    );
-  }
-
-  // ── Step 2: Complexity quiz ───────────────────────────────────
-
-  Widget _buildComplexityQuiz() {
-    final quiz = _problem.lessonContent.complexityQuiz ??
-        LessonQuiz(
-          question:
-              'What\'s the optimal time complexity for ${_problem.title}?',
-          options: [
-            'O(n\u00b2) - nested loops',
-            'O(n log n) - sort first',
-            'O(n) - linear scan',
-            'O(1) - constant time',
-          ],
-          correctIndex: 2,
-          explanation:
-              'Most array problems can be solved in O(n) with the right data structure.',
-        );
-
-    return _buildQuizStep(
-      key: const ValueKey('complexity-quiz'),
-      label: 'Time Complexity',
-      question: quiz.question,
-      options: quiz.options,
-      correctIndex: quiz.correctIndex,
-      explanation: quiz.explanation,
-    );
-  }
-
-  // ── Shared quiz widget ────────────────────────────────────────
-
-  Widget _buildQuizStep({
-    required ValueKey key,
-    required String label,
-    required String question,
-    required List<String> options,
-    required int correctIndex,
-    String explanation = '',
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Padding(
-      key: key,
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: AppSpacing.space4),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.primary.withValues(alpha: 0.15)
-                  : AppColors.primarySurface,
-              borderRadius: BorderRadius.circular(AppRadius.full),
-            ),
-            child: Text(label,
-                style: AppTypography.caption
-                    .copyWith(color: AppColors.primary)),
-          ),
-          const SizedBox(height: AppSpacing.space3),
-          Text(question, style: AppTypography.h2),
-          const SizedBox(height: AppSpacing.space6),
-          ...options.asMap().entries.map((entry) {
-            final i = entry.key;
-            final opt = entry.value;
-            final isSelected = _selectedAnswer == i;
-            final showCorrect = _answered && i == correctIndex;
-            final showWrong =
-                _answered && isSelected && i != correctIndex;
-            final cs = Theme.of(context).colorScheme;
-
-            Color borderColor = cs.outline;
-            Color bgColor = cs.surface;
-            if (showCorrect) {
-              borderColor = AppColors.success;
-              bgColor = isDark
-                  ? AppColors.success.withValues(alpha: 0.15)
-                  : AppColors.successLight;
-            } else if (showWrong) {
-              borderColor = AppColors.error;
-              bgColor = isDark
-                  ? AppColors.error.withValues(alpha: 0.15)
-                  : AppColors.errorLight;
-            } else if (isSelected && !_answered) {
-              borderColor = AppColors.primary;
-              bgColor = isDark
-                  ? AppColors.primary.withValues(alpha: 0.15)
-                  : AppColors.primarySurface;
-            }
-
-            return Padding(
-              padding:
-                  const EdgeInsets.only(bottom: AppSpacing.space3),
-              child: GestureDetector(
-                onTap: _answered
-                    ? null
-                    : () {
-                        HapticFeedback.selectionClick();
-                        setState(() => _selectedAnswer = i);
-                      },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.all(AppSpacing.space4),
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    borderRadius: BorderRadius.circular(AppRadius.lg),
-                    border: Border.all(color: borderColor, width: 2),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                          child: Text(opt, style: AppTypography.body)),
-                      if (showCorrect)
-                        const Icon(Icons.check_circle,
-                            color: AppColors.success),
-                      if (showWrong)
-                        const Icon(Icons.cancel, color: AppColors.error),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-          if (_answered && explanation.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.space2),
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.space3),
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(AppRadius.md),
-                border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.info_outline,
-                      color: AppColors.success, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(explanation,
-                        style: AppTypography.caption
-                            .copyWith(color: AppColors.success)),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const Spacer(),
-          OwlButton(
-            label: _answered ? 'Continue' : 'Check',
-            onPressed: _selectedAnswer == null
-                ? null
-                : () {
-                    if (_answered) {
-                      _nextStep();
-                    } else {
-                      HapticFeedback.mediumImpact();
-                      setState(() => _answered = true);
-                    }
-                  },
-          ),
-          const SizedBox(height: AppSpacing.space4),
-        ],
-      ),
-    );
-  }
-
-  // ── Step 3: AI Tutor Chat ─────────────────────────────────────
-
-  Widget _buildChatStep() {
-    // Seed the opening message on first render
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initChat());
-
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Column(
-      children: [
-        // Chat header
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                  color: cs.outline.withValues(alpha: 0.2), width: 1),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.primary.withValues(alpha: 0.15)
-                      : AppColors.primarySurface,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.psychology_outlined,
-                    size: 18, color: AppColors.primary),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('AI Tutor', style: AppTypography.label),
-                  Text(
-                    _chatDone
-                        ? 'Ready to code!'
-                        : 'Up to ${_maxAiResponses - _aiResponseCount} responses left',
-                    style: AppTypography.caption
-                        .copyWith(color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              // "I'm done" button - always visible
-              GestureDetector(
-                onTap: () =>
-                    context.push('/editor/${_problem.slug}'),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _chatDone
-                        ? AppColors.primary
-                        : cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(AppRadius.xxl),
-                    border: _chatDone
-                        ? null
-                        : Border.all(
-                            color: cs.outline.withValues(alpha: 0.6)),
-                  ),
-                  child: Text(
-                    'Let\'s code!',
-                    style: AppTypography.caption.copyWith(
-                      color: _chatDone ? Colors.white : cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Message list
-        Expanded(
-          child: ListView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 12),
-            itemCount: _chatMessages.length + (_aiTyping ? 1 : 0),
-            itemBuilder: (ctx, i) {
-              if (i == _chatMessages.length) {
-                return const _TypingBubble();
-              }
-              final msg = _chatMessages[i];
-              return _ChatBubble(msg: msg);
+      child: switch (_step) {
+        0 => _ConceptStep(key: const ValueKey('concept'), problem: _problem),
+        1 => _QuizStep(
+            key: const ValueKey('approach'),
+            quiz: _problem.lessonContent.approachQuiz,
+            selected: _selected,
+            answered: _answered,
+            onPick: (i) {
+              HapticFeedback.selectionClick();
+              setState(() => _selected = i);
             },
           ),
-        ),
-
-        // Input row
-        if (!_chatDone)
-          Container(
-            padding: EdgeInsets.fromLTRB(
-              12,
-              8,
-              12,
-              MediaQuery.of(context).viewInsets.bottom > 0 ? 8 : 16,
-            ),
-            decoration: BoxDecoration(
-              color: cs.surface,
-              border: Border(
-                top: BorderSide(
-                    color: cs.outline.withValues(alpha: 0.2), width: 1),
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _msgController,
-                    maxLines: 4,
-                    minLines: 1,
-                    maxLength: 600,
-                    enabled: !_aiTyping,
-                    textInputAction: TextInputAction.newline,
-                    style: AppTypography.body,
-                    decoration: InputDecoration(
-                      hintText: 'Type your approach...',
-                      hintStyle: AppTypography.body.copyWith(
-                          color: cs.onSurfaceVariant
-                              .withValues(alpha: 0.5)),
-                      filled: true,
-                      fillColor: cs.surfaceContainerHighest,
-                      counterText: '',
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppRadius.lg),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppRadius.lg),
-                        borderSide: BorderSide(
-                            color: AppColors.primary, width: 1.5),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _aiTyping ? null : _sendMessage,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: _aiTyping
-                          ? cs.surfaceContainerHighest
-                          : AppColors.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.send_rounded,
-                      size: 20,
-                      color: _aiTyping
-                          ? cs.onSurface.withValues(alpha: 0.3)
-                          : Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          // Chat ended - prominent CTA
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: OwlButton(
-              label: 'I\'m done - Let\'s code!',
-              onPressed: () =>
-                  context.push('/editor/${_problem.slug}'),
-            ),
+        2 => _QuizStep(
+            key: const ValueKey('complexity'),
+            quiz: _problem.lessonContent.complexityQuiz,
+            selected: _selected,
+            answered: _answered,
+            onPick: (i) {
+              HapticFeedback.selectionClick();
+              setState(() => _selected = i);
+            },
           ),
-      ],
+        4 => _ReadyStep(key: const ValueKey('ready'), problem: _problem),
+        _ => const SizedBox.shrink(),
+      },
     );
+  }
+
+  Widget _buildBottomBar() {
+    if (_step == 3) {
+      return _ChatComposer(
+        controller: _msgCtrl,
+        disabled: _aiTyping,
+        onSend: _sendMessage,
+        done: _chatDone,
+        onReady: _next,
+      );
+    }
+    return _BottomActionBar(
+      child: switch (_step) {
+        0 => OwlButton(
+            label: 'Continue',
+            onPressed: _next,
+            leading: null,
+          ),
+        1 || 2 => !_answered
+            ? OwlButton(
+                label: 'Check',
+                onPressed: _selected == null
+                    ? null
+                    : () {
+                        HapticFeedback.mediumImpact();
+                        setState(() => _answered = true);
+                      },
+              )
+            : OwlButton(
+                label: 'Continue',
+                variant: _isCurrentAnswerCorrect()
+                    ? OwlButtonVariant.success
+                    : OwlButtonVariant.primary,
+                onPressed: _next,
+              ),
+        4 => OwlButton.success(
+            label: 'Open Code Editor',
+            onPressed: () => context.push('/editor/${_problem.slug}'),
+          ),
+        _ => const SizedBox.shrink(),
+      },
+    );
+  }
+
+  bool _isCurrentAnswerCorrect() {
+    final quiz = _step == 1
+        ? _problem.lessonContent.approachQuiz
+        : _problem.lessonContent.complexityQuiz;
+    if (quiz == null || _selected == null) return false;
+    return _selected == quiz.correctIndex;
   }
 
   Future<void> _sendMessage() async {
-    final text = _msgController.text.trim();
+    final text = _msgCtrl.text.trim();
     if (text.isEmpty || _aiTyping) return;
-
     HapticFeedback.selectionClick();
-    _msgController.clear();
-
+    _msgCtrl.clear();
     setState(() {
-      _chatMessages.add(_ChatMsg(role: 'user', text: text));
+      _chat.add(_ChatMsg(role: 'user', text: text));
       _aiTyping = true;
     });
     _scrollToBottom();
 
-    // Build history for the API (all messages except the one we just added)
-    final history = _chatMessages
-        .sublist(0, _chatMessages.length - 1) // exclude just-added user msg
+    final history = _chat
+        .sublist(0, _chat.length - 1)
         .map((m) => {'role': m.role == 'ai' ? 'model' : m.role, 'text': m.text})
         .toList();
-
-    final isFinal = _aiResponseCount == _maxAiResponses - 1;
-
+    final isFinal = _aiResponses == _maxAi - 1;
     final api = ref.read(apiServiceProvider);
     final result = await api.chatWithTutor(
       problemTitle: _problem.title,
@@ -667,304 +232,998 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
       newMessage: text,
       isFinalRound: isFinal,
     );
-
-    final reply = result['reply'] as String? ?? 'Keep thinking - you\'re on the right track!';
-
+    final reply = result['reply'] as String? ??
+        'Keep thinking — you\'re on the right track.';
     setState(() {
       _aiTyping = false;
-      _chatMessages.add(_ChatMsg(role: 'ai', text: reply));
-      _aiResponseCount++;
+      _chat.add(_ChatMsg(role: 'ai', text: reply));
+      _aiResponses++;
     });
     _scrollToBottom();
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
       }
     });
   }
-
-  // ── Step 4: Time to code! ─────────────────────────────────────
-
-  Widget _buildCodePrompt() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      key: const ValueKey('code-prompt'),
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.primary.withValues(alpha: 0.15)
-                  : AppColors.primarySurface,
-              shape: BoxShape.circle,
-            ),
-            child:
-                const Icon(Icons.code, size: 56, color: AppColors.primary),
-          ),
-          const SizedBox(height: AppSpacing.space6),
-          Text('Time to Code!', style: AppTypography.h1),
-          const SizedBox(height: AppSpacing.space3),
-          Text(
-            'You\'ve got the theory down - now implement "${_problem.title}" in the editor.',
-            textAlign: TextAlign.center,
-            style: AppTypography.body.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.space10),
-          OwlButton(
-            label: 'Open Editor',
-            onPressed: () =>
-                context.push('/editor/${_problem.slug}'),
-          ),
-          const SizedBox(height: AppSpacing.space4),
-          OutlinedButton(
-            onPressed: () => context.pop(),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 52),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.xxl),
-              ),
-            ),
-            child: Text('Back to home', style: AppTypography.label),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Chat bubble widgets
-// ═══════════════════════════════════════════════════════════════
+// ── Top bar ─────────────────────────────────────────────────
 
-class _ChatBubble extends StatelessWidget {
-  final _ChatMsg msg;
-  const _ChatBubble({required this.msg});
+class _TopBar extends StatelessWidget {
+  final double progress;
+  final int step, total;
+  final VoidCallback onClose;
+  const _TopBar({
+    required this.progress,
+    required this.step,
+    required this.total,
+    required this.onClose,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isUser = msg.role == 'user';
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Row(
-        mainAxisAlignment:
-            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (!isUser) ...[
-            Container(
-              width: 28,
-              height: 28,
-              margin: const EdgeInsets.only(right: 8, bottom: 2),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? AppColors.primary.withValues(alpha: 0.15)
-                    : AppColors.primarySurface,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.psychology_outlined,
-                  size: 14, color: AppColors.primary),
-            ),
-          ],
-          Flexible(
+          InkWell(
+            onTap: onClose,
+            borderRadius: BorderRadius.circular(10),
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 10),
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: isUser
-                    ? AppColors.primary
-                    : cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(AppRadius.lg),
-                  topRight: const Radius.circular(AppRadius.lg),
-                  bottomLeft: Radius.circular(
-                      isUser ? AppRadius.lg : 4.0),
-                  bottomRight: Radius.circular(
-                      isUser ? 4.0 : AppRadius.lg),
-                ),
+                color: scheme.surface,
+                border: Border.all(color: scheme.outline),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Text(
-                msg.text,
-                style: AppTypography.body.copyWith(
-                  color: isUser ? Colors.white : cs.onSurface,
-                  fontSize: 14,
+              child: Center(
+                child: CkIcon.close(size: 18, color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              height: 10,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(AppRadius.full),
+                border: Border.all(color: scheme.outline),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.full),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: (progress * 1000).round(),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [AppColors.primary, AppColors.primaryDark],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(flex: 1000 - (progress * 1000).round(), child: const SizedBox()),
+                  ],
                 ),
               ),
             ),
           ),
-          if (isUser) const SizedBox(width: 4),
+          const SizedBox(width: 12),
+          Text(
+            '$step/$total',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _TypingBubble extends StatefulWidget {
-  const _TypingBubble();
+// ── Bottom action bar (no Spacer; always pinned) ────────────
+
+class _BottomActionBar extends StatelessWidget {
+  final Widget child;
+  const _BottomActionBar({required this.child});
 
   @override
-  State<_TypingBubble> createState() => _TypingBubbleState();
+  Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    return Container(
+      padding: EdgeInsets.only(
+        left: 16, right: 16, top: 12,
+        bottom: MediaQuery.paddingOf(context).bottom + 8,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [bg.withValues(alpha: 0), bg],
+          stops: const [0, 0.4],
+        ),
+      ),
+      child: SizedBox(width: double.infinity, child: child),
+    );
+  }
 }
 
-class _TypingBubbleState extends State<_TypingBubble>
+// ── Step 0: Concept ─────────────────────────────────────────
+
+class _ConceptStep extends ConsumerWidget {
+  final Problem problem;
+  const _ConceptStep({super.key, required this.problem});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categories = ref.watch(categoriesProvider);
+    final cat = categories.firstWhere(
+      (c) => c.id == problem.categoryId,
+      orElse: () => categories.first,
+    );
+    final diffLabel = switch (problem.difficulty) {
+      Difficulty.easy => 'Easy',
+      Difficulty.medium => 'Medium',
+      Difficulty.hard => 'Hard',
+    };
+    final example = problem.testCases.where((tc) => !tc.isHidden).firstOrNull;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${cat.name} · $diffLabel'.toUpperCase(),
+            style: AppTypography.eyebrow.copyWith(color: AppColors.primaryDark),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            problem.title,
+            style: AppTypography.display.copyWith(height: 1.05),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            problem.description,
+            style: AppTypography.body.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: 15,
+              height: 1.55,
+            ),
+          ),
+          if (example != null) ...[
+            const SizedBox(height: 20),
+            _ExampleCard(example: example),
+          ],
+          const SizedBox(height: 20),
+          _SectionRule(label: "What you'll learn"),
+          const SizedBox(height: 14),
+          _LearningItem(
+            index: 1,
+            title: 'Using a hash map for O(1) lookups',
+            detail: 'The core pattern',
+          ),
+          const SizedBox(height: 8),
+          _LearningItem(
+            index: 2,
+            title: 'Complement arithmetic: target − num',
+            detail: 'Why one pass works',
+          ),
+          const SizedBox(height: 8),
+          _LearningItem(
+            index: 3,
+            title: 'Trading space for time',
+            detail: 'Classic memoization idea',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExampleCard extends StatelessWidget {
+  final TestCase example;
+  const _ExampleCard({required this.example});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: scheme.outline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'EXAMPLE',
+            style: AppTypography.eyebrow.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          _kvLine('input ', example.input, AppColors.textPrimary),
+          const SizedBox(height: 2),
+          _kvLine('output', example.expectedOutput, AppColors.successDark),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.primarySurface,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const CkIcon.hint(size: 14, color: AppColors.primaryDark),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'The indices are 0-based and every input has exactly one valid pair.',
+                    style: AppTypography.caption.copyWith(
+                      fontSize: 12,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kvLine(String label, String value, Color valColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text(label,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 12,
+              color: AppColors.textDisabled,
+              height: 1.7,
+            )),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(value,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 12,
+                color: valColor,
+                height: 1.7,
+              )),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionRule extends StatelessWidget {
+  final String label;
+  const _SectionRule({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Container(height: 1, color: AppColors.border)),
+        const SizedBox(width: 12),
+        Text(label.toUpperCase(),
+            style: AppTypography.eyebrow.copyWith(color: AppColors.textSecondary)),
+        const SizedBox(width: 12),
+        Expanded(child: Container(height: 1, color: AppColors.border)),
+      ],
+    );
+  }
+}
+
+class _LearningItem extends StatelessWidget {
+  final int index;
+  final String title, detail;
+  const _LearningItem({required this.index, required this.title, required this.detail});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outline),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: AppColors.primarySurface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '$index',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primaryDark,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTypography.bodyLg.copyWith(fontSize: 14)),
+                const SizedBox(height: 1),
+                Text(detail,
+                    style: AppTypography.caption
+                        .copyWith(color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Quiz step ───────────────────────────────────────────────
+
+class _QuizStep extends StatelessWidget {
+  final LessonQuiz? quiz;
+  final int? selected;
+  final bool answered;
+  final ValueChanged<int> onPick;
+
+  const _QuizStep({
+    super.key,
+    required this.quiz,
+    required this.selected,
+    required this.answered,
+    required this.onPick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (quiz == null) return const SizedBox.shrink();
+    const letters = ['A', 'B', 'C', 'D'];
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'CHECK YOUR UNDERSTANDING',
+            style: AppTypography.eyebrow.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            quiz!.question,
+            style: AppTypography.h2.copyWith(fontSize: 22, height: 1.25),
+          ),
+          const SizedBox(height: 18),
+          ...quiz!.options.asMap().entries.map((e) {
+            final i = e.key;
+            final state = answered
+                ? (i == quiz!.correctIndex
+                    ? _OptState.correct
+                    : selected == i
+                        ? _OptState.wrong
+                        : _OptState.idle)
+                : (selected == i ? _OptState.selected : _OptState.idle);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _QuizOption(
+                letter: letters[i],
+                text: e.value,
+                state: state,
+                onTap: answered ? null : () => onPick(i),
+              ),
+            );
+          }),
+          if (answered && quiz!.explanation.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _QuizFeedback(
+              correct: selected == quiz!.correctIndex,
+              explanation: quiz!.explanation,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+enum _OptState { idle, selected, correct, wrong }
+
+class _QuizOption extends StatelessWidget {
+  final String letter, text;
+  final _OptState state;
+  final VoidCallback? onTap;
+
+  const _QuizOption({
+    required this.letter,
+    required this.text,
+    required this.state,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Color bg = scheme.surface;
+    Color border = scheme.outline;
+    Color letterBg = scheme.surfaceContainerHighest;
+    Color letterFg = AppColors.textSecondary;
+    Color letterBorder = AppColors.borderStrong;
+    double borderWidth = 1;
+    switch (state) {
+      case _OptState.selected:
+        border = AppColors.primary;
+        bg = AppColors.primarySurface;
+        borderWidth = 2;
+        break;
+      case _OptState.correct:
+        border = AppColors.success;
+        bg = AppColors.successLight;
+        borderWidth = 2;
+        letterBg = AppColors.success;
+        letterFg = Colors.white;
+        letterBorder = AppColors.success;
+        break;
+      case _OptState.wrong:
+        border = AppColors.error;
+        bg = AppColors.errorLight;
+        borderWidth = 2;
+        letterBg = AppColors.error;
+        letterFg = Colors.white;
+        letterBorder = AppColors.error;
+        break;
+      case _OptState.idle:
+        break;
+    }
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.xl),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.all(borderWidth == 2 ? 13 : 14),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: border, width: borderWidth),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: letterBg,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(color: letterBorder),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                letter,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: letterFg,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: AppTypography.body.copyWith(fontSize: 14, height: 1.45),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuizFeedback extends StatelessWidget {
+  final bool correct;
+  final String explanation;
+  const _QuizFeedback({required this.correct, required this.explanation});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: correct ? AppColors.successLight : AppColors.errorLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: (correct ? AppColors.successDark : AppColors.errorDark)
+              .withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            correct ? "Nice — that's it".toUpperCase() : 'NOT QUITE',
+            style: AppTypography.eyebrow.copyWith(
+              color: correct ? AppColors.successDark : AppColors.errorDark,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            explanation,
+            style: AppTypography.body.copyWith(fontSize: 13, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Step 3: Chat ────────────────────────────────────────────
+
+class _ChatStep extends StatelessWidget {
+  final List<_ChatMsg> chat;
+  final bool typing, done;
+  final ScrollController scrollCtrl;
+  const _ChatStep({
+    required this.chat,
+    required this.typing,
+    required this.done,
+    required this.scrollCtrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: scrollCtrl,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      children: [
+        Text(
+          'AI TUTOR',
+          style: AppTypography.eyebrow.copyWith(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "Let's think it through",
+          style: AppTypography.h2.copyWith(fontSize: 22),
+        ),
+        const SizedBox(height: 16),
+        for (final m in chat)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _Bubble(msg: m),
+          ),
+        if (typing)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: _Bubble(msg: _ChatMsg(role: 'ai', text: ''), typing: true),
+          ),
+        if (done && !typing)
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.successLight,
+                borderRadius: BorderRadius.circular(AppRadius.full),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CkIcon.check(size: 14, color: AppColors.successDark),
+                  const SizedBox(width: 6),
+                  Text(
+                    "You've got the approach",
+                    style: AppTypography.label.copyWith(
+                      color: AppColors.successDark,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _Bubble extends StatelessWidget {
+  final _ChatMsg msg;
+  final bool typing;
+  const _Bubble({required this.msg, this.typing = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final isAi = msg.role == 'ai';
+    final scheme = Theme.of(context).colorScheme;
+
+    return Row(
+      mainAxisAlignment: isAi ? MainAxisAlignment.start : MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (isAi) ...[
+          const _TutorAvatar(),
+          const SizedBox(width: 8),
+        ],
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            constraints:
+                BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.75),
+            decoration: BoxDecoration(
+              color: isAi ? scheme.surface : AppColors.primary,
+              border: isAi ? Border.all(color: scheme.outline) : null,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isAi ? 4 : 16),
+                bottomRight: Radius.circular(isAi ? 16 : 4),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF1A1F2E).withValues(alpha: 0.05),
+                  offset: const Offset(0, 2),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+            child: typing
+                ? const _TypingDots()
+                : Text(
+                    msg.text,
+                    style: AppTypography.body.copyWith(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: isAi ? scheme.onSurface : Colors.white,
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TutorAvatar extends StatelessWidget {
+  const _TutorAvatar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primary, AppColors.primaryDark],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryDark.withValues(alpha: 0.25),
+            offset: const Offset(0, 2),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: Center(
+        child: CustomPaint(
+          size: const Size(16, 16),
+          painter: _TutorMarkPainter(),
+        ),
+      ),
+    );
+  }
+}
+
+class _TutorMarkPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()
+      ..moveTo(3, 8)
+      ..lineTo(6, 5)
+      ..lineTo(9, 8)
+      ..lineTo(12, 5)
+      ..lineTo(13, 6);
+    canvas.drawPath(path, stroke);
+    canvas.drawCircle(const Offset(12, 10), 1.2, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(_) => false;
+}
+
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _anim;
+  late final AnimationController _c;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
+    _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+      duration: const Duration(milliseconds: 1100),
+    )..repeat();
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _c.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SizedBox(
+      width: 32,
+      height: 14,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, __) => Stack(
+          children: List.generate(3, (i) {
+            final delay = i * 0.15;
+            final t = ((_c.value - delay) % 1.0).clamp(0.0, 1.0);
+            final bounce = (t < 0.3) ? (t / 0.3) * -4 : 0.0;
+            final opacity = 0.45 + (t < 0.3 ? (t / 0.3) * 0.55 : 0);
+            return Positioned(
+              left: i * 10.0,
+              top: 4 + bounce,
+              child: Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.textSecondary.withValues(alpha: opacity),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            margin: const EdgeInsets.only(right: 8, bottom: 2),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.primary.withValues(alpha: 0.15)
-                  : AppColors.primarySurface,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.psychology_outlined,
-                size: 14, color: AppColors.primary),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(AppRadius.lg),
-                topRight: Radius.circular(AppRadius.lg),
-                bottomLeft: Radius.circular(4.0),
-                bottomRight: Radius.circular(AppRadius.lg),
+class _ChatComposer extends StatelessWidget {
+  final TextEditingController controller;
+  final bool disabled, done;
+  final VoidCallback onSend, onReady;
+
+  const _ChatComposer({
+    required this.controller,
+    required this.disabled,
+    required this.done,
+    required this.onSend,
+    required this.onReady,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (done) {
+      return _BottomActionBar(
+        child: OwlButton.success(
+          label: "I'm ready — let's code",
+          onPressed: onReady,
+        ),
+      );
+    }
+    return Container(
+      padding: EdgeInsets.only(
+        left: 12, right: 12, top: 12,
+        bottom: MediaQuery.paddingOf(context).bottom + 12,
+      ),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(top: BorderSide(color: scheme.outline)),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          border: Border.all(color: scheme.outline),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: AnimatedBuilder(
+                animation: controller,
+                builder: (_, __) => TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 4,
+                  maxLength: 600,
+                  enabled: !disabled,
+                  style: AppTypography.body.copyWith(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Share your thinking…',
+                    hintStyle: AppTypography.body.copyWith(
+                      color: AppColors.textDisabled,
+                      fontSize: 14,
+                    ),
+                    border: InputBorder.none,
+                    counterText: '',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
               ),
             ),
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: disabled ? null : onSend,
+              child: AnimatedBuilder(
+                animation: controller,
+                builder: (_, __) {
+                  final active =
+                      controller.text.trim().isNotEmpty && !disabled;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: active ? AppColors.primary : AppColors.surfaceAlt,
+                    ),
+                    alignment: Alignment.center,
+                    child: CkIcon.send(
+                      size: 16,
+                      color: active ? Colors.white : AppColors.textDisabled,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Step 4: Ready ───────────────────────────────────────────
+
+class _ReadyStep extends ConsumerWidget {
+  final Problem problem;
+  const _ReadyStep({super.key, required this.problem});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categories = ref.watch(categoriesProvider);
+    final cat = categories.firstWhere(
+      (c) => c.id == problem.categoryId,
+      orElse: () => categories.first,
+    );
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+      child: Column(
+        children: [
+          Container(
+            width: 112,
+            height: 112,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.primarySurface, AppColors.surface],
+              ),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Center(
+              child: ChapterGlyph(
+                kind: cat.glyph,
+                size: 64,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'READY',
+            style: AppTypography.eyebrow.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Time to write the code',
+            style: AppTypography.h1.copyWith(fontSize: 28),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: 280,
+            child: Text(
+              "Scan once, remember what you've seen in a hash map, return when you find a complement.",
+              textAlign: TextAlign.center,
+              style: AppTypography.body.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+                height: 1.55,
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
+            ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(3, (i) {
-                return AnimatedBuilder(
-                  animation: _anim,
-                  builder: (ctx, _) {
-                    final delay = i * 0.3;
-                    final t = ((_anim.value - delay) % 1.0).clamp(0.0, 1.0);
-                    return Container(
-                      margin: EdgeInsets.only(right: i < 2 ? 4 : 0),
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(
-                            alpha: 0.3 + t * 0.7),
-                        shape: BoxShape.circle,
-                      ),
-                    );
-                  },
-                );
-              }),
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.goldLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Center(
+                    child: CkIcon.bolt(size: 18, color: AppColors.goldDark),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('+${problem.xp} XP on finish',
+                          style: AppTypography.bodyLg.copyWith(fontSize: 14)),
+                      const SizedBox(height: 1),
+                      Text('Solve in one pass for a 10 XP bonus',
+                          style: AppTypography.caption
+                              .copyWith(color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Small reusable widgets
-// ═══════════════════════════════════════════════════════════════
-
-class _DifficultyBadge extends StatelessWidget {
-  final Difficulty difficulty;
-  const _DifficultyBadge({required this.difficulty});
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = switch (difficulty) {
-      Difficulty.easy => ('Easy', AppColors.success),
-      Difficulty.medium => ('Medium', AppColors.warning),
-      Difficulty.hard => ('Hard', AppColors.error),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.caption
-            .copyWith(color: color, fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-}
-
-class _ExampleBlock extends StatelessWidget {
-  final String label;
-  final String content;
-  const _ExampleBlock({required this.label, required this.content});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: AppTypography.caption
-                .copyWith(color: cs.onSurfaceVariant)),
-        const SizedBox(height: 4),
-        Container(
-          width: double.infinity,
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-          ),
-          child: Text(
-            content,
-            style: AppTypography.codeBody.copyWith(fontSize: 13),
-          ),
-        ),
-      ],
     );
   }
 }
