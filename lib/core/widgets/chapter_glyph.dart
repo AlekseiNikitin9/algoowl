@@ -10,21 +10,24 @@ class ChapterGlyph extends StatelessWidget {
   final GlyphKind kind;
   final double size;
   final Color? color;
+  final Color? background;
 
   const ChapterGlyph({
     super.key,
     required this.kind,
     this.size = 48,
     this.color,
+    this.background,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bg = background ?? Theme.of(context).colorScheme.surface;
     return SizedBox(
       width: size,
       height: size,
       child: CustomPaint(
-        painter: _ChapterGlyphPainter(kind, color ?? AppColors.primary),
+        painter: _ChapterGlyphPainter(kind, color ?? AppColors.primary, bg),
       ),
     );
   }
@@ -33,7 +36,8 @@ class ChapterGlyph extends StatelessWidget {
 class _ChapterGlyphPainter extends CustomPainter {
   final GlyphKind kind;
   final Color color;
-  _ChapterGlyphPainter(this.kind, this.color);
+  final Color background;
+  _ChapterGlyphPainter(this.kind, this.color, this.background);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -57,16 +61,35 @@ class _ChapterGlyphPainter extends CustomPainter {
 
     switch (kind) {
       case GlyphKind.array:
-        for (var i = 0; i < 5; i++) {
-          final rect = RRect.fromRectAndRadius(
-            Rect.fromLTWH(4 + i * 8.0, 18, 7, 12),
-            const Radius.circular(1.5),
+        // 3 boxes with index labels — cleaner, more recognizable as an array
+        for (var i = 0; i < 3; i++) {
+          final x = 8.0 + i * 11.0;
+          final boxRect = RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, 16, 10, 14),
+            const Radius.circular(2),
           );
-          canvas.drawRRect(rect, stroke);
-          if (i == 1) {
-            canvas.drawRRect(rect, Paint()..color = color.withValues(alpha: 0.14));
-          }
+          canvas.drawRRect(
+            boxRect,
+            Paint()..color = color.withValues(alpha: i == 1 ? 0.18 : 0.06),
+          );
+          canvas.drawRRect(boxRect, stroke);
+          // index label below box
+          final labelY = 34.0;
+          final labelX = x + 3.5;
+          final labelPaint = Paint()
+            ..color = color.withValues(alpha: 0.5)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.8
+            ..strokeCap = StrokeCap.round;
+          canvas.drawLine(Offset(labelX, labelY), Offset(labelX + 3, labelY), labelPaint);
         }
+        // bracket indicators
+        canvas.drawLine(const Offset(6, 14), const Offset(4, 14), stroke);
+        canvas.drawLine(const Offset(4, 14), const Offset(4, 32), stroke);
+        canvas.drawLine(const Offset(4, 32), const Offset(6, 32), stroke);
+        canvas.drawLine(const Offset(42, 14), const Offset(44, 14), stroke);
+        canvas.drawLine(const Offset(44, 14), const Offset(44, 32), stroke);
+        canvas.drawLine(const Offset(44, 32), const Offset(42, 32), stroke);
         break;
       case GlyphKind.hash:
         canvas.drawLine(const Offset(18, 8), const Offset(14, 40), stroke);
@@ -109,16 +132,13 @@ class _ChapterGlyphPainter extends CustomPainter {
         );
         break;
       case GlyphKind.stack:
-        for (var i = 0; i < 3; i++) {
-          final rect = RRect.fromRectAndRadius(
-            Rect.fromLTWH(10, 10 + i * 9.0, 28, 7),
-            const Radius.circular(1.5),
-          );
-          canvas.drawRRect(
-            rect,
-            Paint()..color = color.withValues(alpha: 0.04 + i * 0.06),
-          );
-          canvas.drawRRect(rect, stroke);
+        // Draw bottom-to-top: bg fill on each layer hides the one below,
+        // creating the "upper layer sits on top" overlap illusion.
+        final bgFill = Paint()..color = background..style = PaintingStyle.fill;
+        for (final cy in [35.0, 24.0, 13.0]) {
+          final p = _roundedRhombus(24, cy, 19, 8, 3);
+          canvas.drawPath(p, bgFill);
+          canvas.drawPath(p, stroke);
         }
         break;
       case GlyphKind.search:
@@ -202,7 +222,37 @@ class _ChapterGlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ChapterGlyphPainter old) =>
-      old.kind != kind || old.color != color;
+      old.kind != kind || old.color != color || old.background != background;
+}
+
+// Rhombus with rounded corners via quadratic bezier at each vertex.
+Path _roundedRhombus(double cx, double cy, double hw, double hh, double r) {
+  final verts = [
+    Offset(cx - hw, cy),  // left
+    Offset(cx, cy - hh),  // top
+    Offset(cx + hw, cy),  // right
+    Offset(cx, cy + hh),  // bottom
+  ];
+  final path = Path();
+  for (var i = 0; i < 4; i++) {
+    final prev = verts[(i + 3) % 4];
+    final curr = verts[i];
+    final next = verts[(i + 1) % 4];
+    final from = curr - prev;
+    final to = next - curr;
+    final sx = curr.dx - from.dx / from.distance * r;
+    final sy = curr.dy - from.dy / from.distance * r;
+    final ex = curr.dx + to.dx / to.distance * r;
+    final ey = curr.dy + to.dy / to.distance * r;
+    if (i == 0) {
+      path.moveTo(sx, sy);
+    } else {
+      path.lineTo(sx, sy);
+    }
+    path.quadraticBezierTo(curr.dx, curr.dy, ex, ey);
+  }
+  path.close();
+  return path;
 }
 
 /// Chapter tiers (replaces emoji milestones) — Rookie → Junior → Senior → Principal.
@@ -216,7 +266,7 @@ class ChapterTier {
 
 const List<ChapterTier> kChapterTiers = [
   ChapterTier('Rookie', GlyphKind.array, 0, 1),
-  ChapterTier('Junior', GlyphKind.hash, 1, 4),
+  ChapterTier('Junior', GlyphKind.stack, 1, 4),
   ChapterTier('Senior', GlyphKind.tree, 4, 8),
   ChapterTier('Principal', GlyphKind.neural, 8, 14),
 ];

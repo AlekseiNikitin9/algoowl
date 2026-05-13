@@ -6,11 +6,14 @@ subprocesses.
 """
 
 import json
+import logging
 import re
 import time
 from typing import Any
 
 import httpx
+
+log = logging.getLogger("executor")
 
 
 # Language → sandbox service URL (within the Docker Compose network)
@@ -55,6 +58,7 @@ def run_in_container(
     """
     url = LANGUAGE_URLS.get(language)
     if not url:
+        log.error("Unsupported language: %s", language)
         return {
             "status": "runtime_error",
             "test_results": [],
@@ -63,10 +67,13 @@ def run_in_container(
             "error": f"Unsupported language: {language}",
         }
 
+    func_name = detect_function_name(code, language)
+    log.info("run_in_container language=%s url=%s func=%s test_cases=%d", language, url, func_name, len(test_cases))
+
     payload = {
         "code": code,
         "test_cases": test_cases,
-        "function_name": detect_function_name(code, language),
+        "function_name": func_name,
     }
 
     start = time.monotonic()
@@ -82,10 +89,12 @@ def run_in_container(
         result = response.json()
         result["runtime_ms"] = elapsed_ms
         result.setdefault("memory_mb", 0)
+        log.info("run_in_container status=%s elapsed_ms=%d", result.get("status"), elapsed_ms)
         return result
 
     except httpx.TimeoutException:
         elapsed_ms = int((time.monotonic() - start) * 1000)
+        log.error("Sandbox timeout after %dms (limit=%ds) language=%s", elapsed_ms, EXEC_TIMEOUT, language)
         return {
             "status": "time_limit",
             "test_results": [],
@@ -94,6 +103,7 @@ def run_in_container(
             "error": f"Time limit exceeded ({EXEC_TIMEOUT}s)",
         }
     except httpx.ConnectError as e:
+        log.error("Sandbox unreachable at %s: %s", url, e)
         return {
             "status": "runtime_error",
             "test_results": [],
@@ -102,6 +112,7 @@ def run_in_container(
             "error": f"Sandbox unreachable: {e}",
         }
     except Exception as e:
+        log.exception("Unexpected executor error language=%s: %s", language, e)
         return {
             "status": "runtime_error",
             "test_results": [],

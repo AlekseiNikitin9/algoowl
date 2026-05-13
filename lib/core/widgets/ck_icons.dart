@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Phosphor-style single-weight custom icons (24x24, stroke = currentColor).
@@ -48,6 +50,8 @@ class CkIcon extends StatelessWidget {
       : this._(_IconKind.sun, size: size, color: color, key: key);
   const CkIcon.moon({double size = 24, Color? color, Key? key})
       : this._(_IconKind.moon, size: size, color: color, key: key);
+  const CkIcon.robot({double size = 24, Color? color, Key? key})
+      : this._(_IconKind.robot, size: size, color: color, key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +68,7 @@ class CkIcon extends StatelessWidget {
 
 enum _IconKind {
   home, book, trophy, user, flame, bolt, play, lock, check,
-  chevR, chevL, close, plus, hint, reset, send, run, sun, moon,
+  chevR, chevL, close, plus, hint, reset, send, run, sun, moon, robot,
 }
 
 class _CkIconPainter extends CustomPainter {
@@ -147,12 +151,11 @@ class _CkIconPainter extends CustomPainter {
         break;
       case _IconKind.flame:
         final p = Path()
-          ..moveTo(12, 3)
-          ..cubicTo(13, 6, 16, 7, 16, 11)
-          ..cubicTo(16, 13.2, 14.2, 15, 12, 15)
-          ..cubicTo(9.8, 15, 8, 13.2, 8, 11)
-          ..cubicTo(8, 9, 9, 8, 9, 6)
-          ..cubicTo(10, 8, 12, 7, 12, 3)
+          ..moveTo(12, 2)
+          ..cubicTo(15, 5, 18.5, 9, 17.5, 14)
+          ..cubicTo(17, 17.5, 15, 20.5, 12, 22)
+          ..cubicTo(9, 20.5, 7, 17.5, 6.5, 14)
+          ..cubicTo(5.5, 9, 9, 5, 12, 2)
           ..close();
         canvas.drawPath(p, fill);
         break;
@@ -222,11 +225,27 @@ class _CkIconPainter extends CustomPainter {
         canvas.drawLine(const Offset(9, 21), const Offset(15, 21), stroke);
         break;
       case _IconKind.reset:
+        // Clockwise arc ~300°, gap at bottom-left. Arrowhead at arc start.
+        const startAngle = math.pi / 2 + 0.4;
+        const sweep = 5.2;
+        const cx = 12.0, cy = 12.0, r = 7.5;
         final arc = Path()
-          ..addArc(Rect.fromCircle(center: const Offset(12, 12), radius: 8), -1.9, 5.2);
+          ..addArc(Rect.fromCircle(center: const Offset(cx, cy), radius: r),
+              startAngle, sweep);
         canvas.drawPath(arc, stroke);
-        final ticker = Path()..moveTo(4, 4)..lineTo(4, 9)..lineTo(9, 9);
-        canvas.drawPath(ticker, stroke);
+        // Arrowhead at arc start — tangent direction of CW travel
+        final sx = cx + r * math.cos(startAngle);
+        final sy = cy + r * math.sin(startAngle);
+        final tx = math.sin(startAngle);   // CW tangent x
+        final ty = -math.cos(startAngle);  // CW tangent y
+        final nx = -ty, ny = tx;           // normal
+        const al = 5.0, aw = 2.8;
+        final arrow = Path()
+          ..moveTo(sx, sy)                             // tip
+          ..lineTo(sx - tx * al + nx * aw, sy - ty * al + ny * aw)
+          ..lineTo(sx - tx * al - nx * aw, sy - ty * al - ny * aw)
+          ..close();
+        canvas.drawPath(arrow, Paint()..color = color..style = PaintingStyle.fill);
         break;
       case _IconKind.send:
         final p = Path()
@@ -262,6 +281,24 @@ class _CkIconPainter extends CustomPainter {
               radius: const Radius.circular(9), clockwise: false)
           ..close();
         canvas.drawPath(p, stroke);
+        break;
+      case _IconKind.robot:
+        // Head
+        canvas.drawRRect(
+          RRect.fromLTRBR(3.5, 6, 20.5, 18, const Radius.circular(3)),
+          stroke,
+        );
+        // Eyes
+        canvas.drawCircle(const Offset(9, 11), 1.5, fill);
+        canvas.drawCircle(const Offset(15, 11), 1.5, fill);
+        // Mouth
+        canvas.drawLine(const Offset(9, 15), const Offset(15, 15), stroke);
+        // Antenna
+        canvas.drawLine(const Offset(12, 6), const Offset(12, 3.5), stroke);
+        canvas.drawCircle(const Offset(12, 2.8), 1.2, fill);
+        // Ears
+        canvas.drawLine(const Offset(3.5, 10.5), const Offset(1.5, 10.5), stroke);
+        canvas.drawLine(const Offset(20.5, 10.5), const Offset(22.5, 10.5), stroke);
         break;
     }
 

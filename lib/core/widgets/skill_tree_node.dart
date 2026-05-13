@@ -78,7 +78,10 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedScale(
+          SizedBox(
+            width: 108,
+            height: 108,
+            child: AnimatedScale(
             duration: const Duration(milliseconds: 120),
             scale: _pressed ? 0.96 : 1,
             child: Stack(
@@ -125,6 +128,7 @@ class _SkillTreeNodeState extends State<SkillTreeNode>
                 ),
               ],
             ),
+          ),
           ),
           const SizedBox(height: 8),
           SizedBox(

@@ -67,7 +67,8 @@ class _UnitScreenState extends ConsumerState<UnitScreen> {
       orElse: () => categories[math.min(1, categories.length - 1)],
     );
     final locked = category.status == CategoryStatus.locked;
-    final problems = kUnitProblems[widget.slug] ?? kLockedSampleProblems;
+    final problemsAsync = ref.watch(unitProblemsProvider(widget.slug));
+    final problems = problemsAsync.valueOrNull ?? kLockedSampleProblems;
 
     int solvedIn(Difficulty d) =>
         problems.where((p) => p.difficulty == d && p.solved).length;
@@ -634,6 +635,9 @@ class _ProblemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = _diffStyles[problem.difficulty]!;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pillBg = isDark ? style.dot.withValues(alpha: 0.18) : style.bg;
+    final pillFg = isDark ? style.dot : style.fg;
     return Opacity(
       opacity: locked ? 0.55 : 1,
       child: InkWell(
@@ -652,11 +656,15 @@ class _ProblemRow extends StatelessWidget {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: problem.solved ? AppColors.success : AppColors.surfaceAlt,
+                  color: problem.solved
+                      ? AppColors.success
+                      : isDark
+                          ? Theme.of(context).colorScheme.surfaceContainerHighest
+                          : AppColors.surfaceAlt,
                   borderRadius: BorderRadius.circular(10),
                   border: problem.solved
                       ? null
-                      : Border.all(color: AppColors.border),
+                      : Border.all(color: Theme.of(context).colorScheme.outline),
                   boxShadow: problem.solved
                       ? [
                           BoxShadow(
@@ -677,7 +685,7 @@ class _ProblemRow extends StatelessWidget {
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
               ),
@@ -698,14 +706,14 @@ class _ProblemRow extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
-                            color: style.bg,
+                            color: pillBg,
                             borderRadius: BorderRadius.circular(AppRadius.full),
                           ),
                           child: Text(
                             style.label,
                             style: AppTypography.label.copyWith(
                               fontSize: 11,
-                              color: style.fg,
+                              color: pillFg,
                             ),
                           ),
                         ),

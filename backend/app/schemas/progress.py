@@ -39,3 +39,11 @@ class ReviewQueueItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CategoryStatusItem(BaseModel):
+    slug: str
+    status: str  # "completed" | "current" | "locked"
+    progress: float
+    problems_total: int
+    problems_solved: int

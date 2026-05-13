@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     openai_api_key: str = "sk-placeholder"
     gemini_api_key: str = "placeholder"
 
+    # OAuth
+    google_client_id: str = ""
+    apple_client_id: str = ""
+
     # App
     app_env: str = "development"
     cors_origins: str = "http://localhost:8080"

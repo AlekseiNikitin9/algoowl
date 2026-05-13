@@ -66,6 +66,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       (c) => c.status == CategoryStatus.current,
       orElse: () => categories.first,
     );
+    final statusData = ref.watch(categoryStatusDataProvider).valueOrNull ?? [];
+    final currentStatus = statusData.firstWhere(
+      (s) => s['slug'] == currentCat.slug,
+      orElse: () => <String, dynamic>{},
+    );
+    final problemsSolved =
+        (currentStatus['problems_solved'] as num?)?.toInt() ?? 0;
+    final problemsTotal =
+        (currentStatus['problems_total'] as num?)?.toInt() ?? 0;
 
     final rows = <_Row>[];
     for (final tier in kChapterTiers) {
@@ -100,10 +109,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: _ContinueContent(
                   categoryName: currentCat.name,
                   progress: currentCat.progress,
+                  problemsSolved: problemsSolved,
+                  problemsTotal: problemsTotal,
                 ),
               ),
               const SizedBox(height: 12),
-              _TodaysReviewCard(onTap: () {}),
+              _TodaysReviewCard(
+                onTap: () => ref.read(bottomNavIndexProvider.notifier).state = 1,
+              ),
               const SizedBox(height: 28),
               const SectionHeader(label: 'Your path'),
               const SizedBox(height: 8),
@@ -134,22 +147,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _topBarContent(user) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       child: Row(
         children: [
           CkChip(
-            leading: const CkIcon.flame(size: 16),
+            leading: Icon(
+              Icons.local_fire_department_rounded,
+              size: 16,
+              color: isDark ? AppColors.gold : AppColors.goldDark,
+            ),
             label: '${user.streak}  day streak',
-            background: AppColors.goldLight,
-            foreground: AppColors.goldDark,
+            background: isDark
+                ? AppColors.goldDark.withValues(alpha: 0.22)
+                : AppColors.goldLight,
+            foreground: isDark ? AppColors.gold : AppColors.goldDark,
           ),
           const SizedBox(width: 8),
           CkChip(
-            leading: const CkIcon.bolt(size: 14),
+            leading: CkIcon.bolt(
+              size: 14,
+              color: isDark ? AppColors.primary : AppColors.primaryDark,
+            ),
             label: '${user.xp} XP',
-            background: AppColors.primarySurface,
-            foreground: AppColors.primaryDark,
+            background: isDark
+                ? AppColors.primaryDark.withValues(alpha: 0.22)
+                : AppColors.primarySurface,
+            foreground: isDark ? AppColors.primary : AppColors.primaryDark,
           ),
           const Spacer(),
           Container(
@@ -245,7 +270,14 @@ class _NodeRow extends _Row {
 class _ContinueContent extends StatelessWidget {
   final String categoryName;
   final double progress;
-  const _ContinueContent({required this.categoryName, required this.progress});
+  final int problemsSolved;
+  final int problemsTotal;
+  const _ContinueContent({
+    required this.categoryName,
+    required this.progress,
+    required this.problemsSolved,
+    required this.problemsTotal,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -266,12 +298,14 @@ class _ContinueContent extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Two Sum',
+          categoryName,
           style: AppTypography.h1.copyWith(color: Colors.white, fontSize: 24),
         ),
         const SizedBox(height: 2),
         Text(
-          '$categoryName · Problem 2 of 5',
+          problemsTotal > 0
+              ? 'Problem ${problemsSolved + 1} of $problemsTotal'
+              : categoryName,
           style: AppTypography.caption.copyWith(
             color: Colors.white.withValues(alpha: 0.85),
             fontSize: 13,
@@ -327,18 +361,31 @@ class _TodaysReviewCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppColors.goldLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.goldDark.withValues(alpha: 0.15)),
-            ),
-            child: const Center(
-              child: CkIcon.reset(size: 22, color: AppColors.goldDark),
-            ),
-          ),
+          Builder(builder: (context) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            return Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? AppColors.gold.withValues(alpha: 0.18)
+                    : AppColors.goldLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDark
+                      ? AppColors.gold.withValues(alpha: 0.30)
+                      : AppColors.goldDark.withValues(alpha: 0.15),
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.replay_rounded,
+                  size: 22,
+                  color: isDark ? AppColors.gold : AppColors.goldDark,
+                ),
+              ),
+            );
+          }),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -369,6 +416,11 @@ class _ChapterRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconBg = unlocked
+        ? (isDark ? AppColors.primaryDark.withValues(alpha: 0.28) : AppColors.primarySurface)
+        : scheme.surfaceContainerHighest;
     final opacity = unlocked ? 1.0 : 0.55;
     return Opacity(
       opacity: opacity,
@@ -380,9 +432,9 @@ class _ChapterRail extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: unlocked ? AppColors.primarySurface : AppColors.surfaceAlt,
+                color: iconBg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: scheme.outline),
               ),
               alignment: Alignment.center,
               child: ChapterGlyph(

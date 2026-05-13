@@ -1,29 +1,31 @@
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import engine, Base
 from .utils.redis import close_redis, get_redis
+from .utils.logging import get_logger, setup_logging
 from .routers import auth, problems, submissions, progress, ai
+
+setup_logging()
+log = get_logger("api")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create tables (dev only — use Alembic in prod)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Verify Redis connection
     r = await get_redis()
     await r.ping()
-    print("✓ Redis connected")
-    print("✓ Database tables ready")
+    log.info("✓ Redis connected")
+    log.info("✓ Database tables ready")
 
     yield
 
-    # Shutdown
     await close_redis()
     await engine.dispose()
 
@@ -43,6 +45,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - start) * 1000
+    client = request.client.host if request.client else "unknown"
+    log.info(
+        "%s %s %s — %dms [%s]",
+        request.method,
+        request.url.path,
+        response.status_code,
+        int(ms),
+        client,
+    )
+    return response
+
 
 # Routers
 app.include_router(auth.router)

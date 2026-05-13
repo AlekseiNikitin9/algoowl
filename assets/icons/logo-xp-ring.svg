@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- XP progress ring: 270° arc with a leading dot.
+       Feels like a gamified XP ring — progress frozen at almost-complete.
+       The open gap at the top suggests room left to grow.
+       Arc: clockwise from upper-right (≈315°) to upper-left (≈225°), spanning 270°. -->
+
+  <!-- Ghost track (full circle, very subtle) -->
+  <circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.18"/>
+
+  <!-- Progress arc: 3/4 of circle, thick, rounded ends -->
+  <path
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    d="M 24.5 7.5 A 12 12 0 1 1 7.5 7.5"
+  />
+
+  <!-- Leading edge dot (where you are now) -->
+  <circle cx="7.5" cy="7.5" r="3" fill="currentColor"/>
+</svg>

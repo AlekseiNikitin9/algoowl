@@ -1,15 +1,17 @@
 import 'dart:convert';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 /// All backend communication goes through this class.
 ///
 /// Base URL:
 ///   iOS Simulator    → http://localhost:8000
 ///   Android Emulator → http://10.0.2.2:8000
-///   Physical device  → http://<your-lan-ip>:8000
+///   Physical device  → http://YOUR_LAN_IP:8000
 class ApiService {
-  static const String baseUrl = 'http://192.168.0.136:8000';
+  static const String baseUrl = 'http://192.168.0.104:8000';
 
   static const _tokenKey = 'jwt_token';
   static const _credEmailKey = 'device_email';
@@ -17,6 +19,8 @@ class ApiService {
 
   String? _token;
   bool get isAuthenticated => _token != null;
+
+  final _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -129,8 +133,51 @@ class ApiService {
     return {'token': _token, 'userId': 'backend-user'};
   }
 
-  Future<void> loginWithGoogle() async {}
-  Future<void> loginWithApple() async {}
+  /// Returns true if sign-in completed, false if the user explicitly cancelled.
+  /// Throws on configuration errors or silent failures.
+  Future<bool> loginWithGoogle() async {
+    final account = await _googleSignIn.signIn();
+    if (account == null) {
+      // null means the user dismissed the sheet. If we never showed the sheet
+      // (e.g. REVERSED_CLIENT_ID missing in Info.plist), signIn() hangs — it
+      // never returns null, so this branch is only hit on genuine cancels.
+      return false;
+    }
+
+    final auth = await account.authentication;
+    final idToken = auth.idToken;
+    if (idToken == null) throw Exception('Failed to obtain Google ID token');
+
+    final res = await _post('/auth/google', {'id_token': idToken}, requiresAuth: false);
+    await _saveToken(res['access_token'] as String);
+    return true;
+  }
+
+  /// Returns true if sign-in completed, false if the user cancelled.
+  Future<bool> loginWithApple() async {
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+      );
+
+      final identityToken = credential.identityToken;
+      if (identityToken == null) throw Exception('Failed to obtain Apple identity token');
+
+      final firstName = credential.givenName ?? '';
+      final lastName = credential.familyName ?? '';
+      final fullName = [firstName, lastName].where((s) => s.isNotEmpty).join(' ');
+
+      final body = <String, dynamic>{'identity_token': identityToken};
+      if (fullName.isNotEmpty) body['full_name'] = fullName;
+
+      final res = await _post('/auth/apple', body, requiresAuth: false);
+      await _saveToken(res['access_token'] as String);
+      return true;
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) return false;
+      rethrow;
+    }
+  }
 
   Future<Map<String, dynamic>> getMe() async {
     final res = await _get('/auth/me');
@@ -143,11 +190,17 @@ class ApiService {
     String? category,
     String? difficulty,
     int page = 1,
+    int perPage = 200,
   }) async {
-    final params = <String, String>{'page': '$page'};
+    final params = <String, String>{'page': '$page', 'per_page': '$perPage'};
     if (category != null) params['category'] = category;
     if (difficulty != null) params['difficulty'] = difficulty;
     final res = await _get('/problems', queryParams: params);
+    return List<Map<String, dynamic>>.from(res as List);
+  }
+
+  Future<List<Map<String, dynamic>>> getCategories() async {
+    final res = await _get('/problems/categories/all');
     return List<Map<String, dynamic>>.from(res as List);
   }
 
@@ -230,33 +283,51 @@ class ApiService {
   /// [isFinalRound] signals the AI to wrap up warmly.
   /// Returns {'reply': String, 'refused': bool}.
   Future<Map<String, dynamic>> chatWithTutor({
+    required String problemSlug,
     required String problemTitle,
     required String problemDescription,
     required List<Map<String, String>> messages,
     required String newMessage,
-    bool isFinalRound = false,
   }) async {
-    await ensureAuth();
     try {
+      await ensureAuth();
       final res = await _post('/ai/chat', {
+        'problem_slug': problemSlug,
         'problem_title': problemTitle,
         'problem_description': problemDescription,
         'messages': messages,
         'new_message': newMessage,
-        'is_final_round': isFinalRound,
       });
       return res as Map<String, dynamic>;
     } on ApiException catch (e) {
       return {
-        'reply': 'Hmm, I ran into an issue (${e.message}). '
-            'Keep thinking - what data structure might help here?',
+        'reply': '[DEBUG] ApiException: ${e.message} (status ${e.statusCode})',
         'refused': false,
+      };
+    } catch (e) {
+      return {
+        'reply': '[DEBUG] Error: $e',
+        'refused': false,
+      };
+    }
+  }
+
+  /// Analyze time and space complexity of submitted code.
+  /// Returns {'time': String, 'space': String}.
+  Future<Map<String, String>> analyzeComplexity({
+    required String code,
+    required String language,
+  }) async {
+    try {
+      await ensureAuth();
+      final res = await _post('/ai/complexity', {'code': code, 'language': language});
+      final m = res as Map<String, dynamic>;
+      return {
+        'time': m['time'] as String? ?? 'O(n)',
+        'space': m['space'] as String? ?? 'O(n)',
       };
     } catch (_) {
-      return {
-        'reply': 'Network hiccup! Your thinking is still valid - keep going.',
-        'refused': false,
-      };
+      return {'time': 'O(n)', 'space': 'O(n)'};
     }
   }
 
@@ -292,6 +363,19 @@ class ApiService {
     await ensureAuth();
     final res = await _get('/progress/me');
     return res as Map<String, dynamic>;
+  }
+
+  Future<List<String>> getSolvedSlugs() async {
+    await ensureAuth();
+    final res = await _get('/progress/me/solved-slugs');
+    final map = res as Map<String, dynamic>;
+    return List<String>.from(map['slugs'] as List);
+  }
+
+  Future<List<Map<String, dynamic>>> getCategoryStatuses() async {
+    await ensureAuth();
+    final res = await _get('/progress/me/category-status');
+    return List<Map<String, dynamic>>.from(res as List);
   }
 
   /// Save onboarding preferences and mark onboarding complete.
@@ -353,7 +437,7 @@ class ApiService {
     if (queryParams != null && queryParams.isNotEmpty) {
       uri = uri.replace(queryParameters: queryParams);
     }
-    final response = await http.get(uri, headers: _headers);
+    final response = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
     return _handle(response);
   }
 
@@ -366,7 +450,7 @@ class ApiService {
     final headers = requiresAuth
         ? _headers
         : {'Content-Type': 'application/json', 'Accept': 'application/json'};
-    final response = await http.post(uri, headers: headers, body: jsonEncode(body));
+    final response = await http.post(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 15));
     return _handle(response);
   }
 

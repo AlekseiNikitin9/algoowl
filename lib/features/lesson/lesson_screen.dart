@@ -38,19 +38,45 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   bool _aiTyping = false;
-  int _aiResponses = 0;
-  static const _maxAi = 3;
+  bool _approachUnlocked = false;
+  bool _limitExceeded = false;
 
   late Problem _problem;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    final problems = ref.read(problemsProvider);
-    _problem = problems.firstWhere(
-      (p) => p.slug == widget.problemSlug,
-      orElse: () => problems.first,
-    );
+    _loadProblem();
+  }
+
+  Future<void> _loadProblem() async {
+    Problem? result;
+    for (final p in kSampleProblems) {
+      if (p.slug == widget.problemSlug) { result = p; break; }
+    }
+
+    if (result == null) {
+      try {
+        final api = ref.read(apiServiceProvider);
+        await api.ensureAuth();
+        final data = await api.getProblem(widget.problemSlug);
+        final slug = data['slug'] as String? ?? widget.problemSlug;
+        Problem? local;
+        for (final p in kSampleProblems) {
+          if (p.slug == slug) { local = p; break; }
+        }
+        result = Problem.fromApi(data, local: local);
+      } catch (_) {
+        result = kSampleProblems.first;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _problem = result!;
+      _loading = false;
+    });
   }
 
   @override
@@ -61,7 +87,7 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
   }
 
   double get _progress => (_step + 1) / _totalSteps;
-  bool get _chatDone => _aiResponses >= _maxAi;
+  bool get _chatDone => _approachUnlocked;
 
   void _next() {
     setState(() {
@@ -97,6 +123,9 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -164,7 +193,9 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
         disabled: _aiTyping,
         onSend: _sendMessage,
         done: _chatDone,
+        limitExceeded: _limitExceeded,
         onReady: _next,
+        onSkip: () => context.push('/editor/${_problem.slug}'),
       );
     }
     return _BottomActionBar(
@@ -210,7 +241,7 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
 
   Future<void> _sendMessage() async {
     final text = _msgCtrl.text.trim();
-    if (text.isEmpty || _aiTyping) return;
+    if (text.isEmpty || _aiTyping || _limitExceeded) return;
     HapticFeedback.selectionClick();
     _msgCtrl.clear();
     setState(() {
@@ -223,22 +254,34 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
         .sublist(0, _chat.length - 1)
         .map((m) => {'role': m.role == 'ai' ? 'model' : m.role, 'text': m.text})
         .toList();
-    final isFinal = _aiResponses == _maxAi - 1;
     final api = ref.read(apiServiceProvider);
-    final result = await api.chatWithTutor(
-      problemTitle: _problem.title,
-      problemDescription: _problem.description,
-      messages: history,
-      newMessage: text,
-      isFinalRound: isFinal,
-    );
-    final reply = result['reply'] as String? ??
-        'Keep thinking — you\'re on the right track.';
-    setState(() {
-      _aiTyping = false;
-      _chat.add(_ChatMsg(role: 'ai', text: reply));
-      _aiResponses++;
-    });
+    try {
+      final result = await api.chatWithTutor(
+        problemSlug: _problem.slug,
+        problemTitle: _problem.title,
+        problemDescription: _problem.description,
+        messages: history,
+        newMessage: text,
+      );
+      final limitExceeded = result['limit_exceeded'] == true;
+      final reply = result['reply'] as String? ??
+          'Keep thinking — you\'re on the right track.';
+      final unlocked = result['approach_unlocked'] == true;
+      setState(() {
+        _aiTyping = false;
+        _chat.add(_ChatMsg(role: 'ai', text: reply));
+        if (limitExceeded) {
+          _limitExceeded = true;
+        } else if (unlocked) {
+          _approachUnlocked = true;
+        }
+      });
+    } catch (_) {
+      setState(() {
+        _aiTyping = false;
+        _chat.add(const _ChatMsg(role: 'ai', text: 'Network hiccup! Your thinking is still valid — keep going.'));
+      });
+    }
     _scrollToBottom();
   }
 
@@ -343,18 +386,15 @@ class _BottomActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = Theme.of(context).scaffoldBackgroundColor;
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: EdgeInsets.only(
         left: 16, right: 16, top: 12,
         bottom: MediaQuery.paddingOf(context).bottom + 8,
       ),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [bg.withValues(alpha: 0), bg],
-          stops: const [0, 0.4],
-        ),
+        color: bg,
+        border: Border(top: BorderSide(color: scheme.outline.withValues(alpha: 0.6), width: 0.5)),
       ),
       child: SizedBox(width: double.infinity, child: child),
     );
@@ -460,29 +500,36 @@ class _ExampleCard extends StatelessWidget {
           const SizedBox(height: 2),
           _kvLine('output', example.expectedOutput, AppColors.successDark),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.primarySurface,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const CkIcon.hint(size: 14, color: AppColors.primaryDark),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'The indices are 0-based and every input has exactly one valid pair.',
-                    style: AppTypography.caption.copyWith(
-                      fontSize: 12,
-                      color: AppColors.primaryDark,
+          Builder(builder: (context) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final hintBg = isDark
+                ? AppColors.primary.withValues(alpha: 0.12)
+                : AppColors.primarySurface;
+            final hintFg = isDark ? AppColors.primary : AppColors.primaryDark;
+            return Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: hintBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CkIcon.hint(size: 14, color: hintFg),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'The indices are 0-based and every input has exactly one valid pair.',
+                      style: AppTypography.caption.copyWith(
+                        fontSize: 12,
+                        color: hintFg,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -540,6 +587,11 @@ class _LearningItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final numBg = isDark
+        ? AppColors.primary.withValues(alpha: 0.12)
+        : AppColors.primarySurface;
+    final numFg = isDark ? AppColors.primary : AppColors.primaryDark;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -554,7 +606,7 @@ class _LearningItem extends StatelessWidget {
             width: 26,
             height: 26,
             decoration: BoxDecoration(
-              color: AppColors.primarySurface,
+              color: numBg,
               borderRadius: BorderRadius.circular(8),
             ),
             alignment: Alignment.center,
@@ -563,7 +615,7 @@ class _LearningItem extends StatelessWidget {
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: AppColors.primaryDark,
+                color: numFg,
               ),
             ),
           ),
@@ -679,7 +731,10 @@ class _QuizOption extends StatelessWidget {
     switch (state) {
       case _OptState.selected:
         border = AppColors.primary;
-        bg = AppColors.primarySurface;
+        bg = AppColors.primary.withValues(alpha: 0.10);
+        letterBg = AppColors.primary.withValues(alpha: 0.18);
+        letterFg = AppColors.primary;
+        letterBorder = AppColors.primary.withValues(alpha: 0.4);
         borderWidth = 2;
         break;
       case _OptState.correct:
@@ -701,6 +756,13 @@ class _QuizOption extends StatelessWidget {
       case _OptState.idle:
         break;
     }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = switch (state) {
+      _OptState.idle => scheme.onSurface,
+      _OptState.selected => isDark ? Colors.white : AppColors.primary,
+      _OptState.correct => AppColors.successDark,
+      _OptState.wrong => AppColors.errorDark,
+    };
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.xl),
@@ -737,7 +799,11 @@ class _QuizOption extends StatelessWidget {
             Expanded(
               child: Text(
                 text,
-                style: AppTypography.body.copyWith(fontSize: 14, height: 1.45),
+                style: AppTypography.body.copyWith(
+                  fontSize: 14,
+                  height: 1.45,
+                  color: textColor,
+                ),
               ),
             ),
           ],
@@ -777,7 +843,11 @@ class _QuizFeedback extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             explanation,
-            style: AppTypography.body.copyWith(fontSize: 13, height: 1.5),
+            style: AppTypography.body.copyWith(
+              fontSize: 13,
+              height: 1.5,
+              color: correct ? AppColors.successDark : AppColors.errorDark,
+            ),
           ),
         ],
       ),
@@ -934,38 +1004,13 @@ class _TutorAvatar extends StatelessWidget {
           ),
         ],
       ),
-      child: Center(
-        child: CustomPaint(
-          size: const Size(16, 16),
-          painter: _TutorMarkPainter(),
-        ),
+      child: const Center(
+        child: CkIcon.robot(size: 16, color: Colors.white),
       ),
     );
   }
 }
 
-class _TutorMarkPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final path = Path()
-      ..moveTo(3, 8)
-      ..lineTo(6, 5)
-      ..lineTo(9, 8)
-      ..lineTo(12, 5)
-      ..lineTo(13, 6);
-    canvas.drawPath(path, stroke);
-    canvas.drawCircle(const Offset(12, 10), 1.2, Paint()..color = Colors.white);
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
-}
 
 class _TypingDots extends StatefulWidget {
   const _TypingDots();
@@ -1026,15 +1071,17 @@ class _TypingDotsState extends State<_TypingDots>
 
 class _ChatComposer extends StatelessWidget {
   final TextEditingController controller;
-  final bool disabled, done;
-  final VoidCallback onSend, onReady;
+  final bool disabled, done, limitExceeded;
+  final VoidCallback onSend, onReady, onSkip;
 
   const _ChatComposer({
     required this.controller,
     required this.disabled,
     required this.done,
+    required this.limitExceeded,
     required this.onSend,
     required this.onReady,
+    required this.onSkip,
   });
 
   @override
@@ -1048,23 +1095,34 @@ class _ChatComposer extends StatelessWidget {
         ),
       );
     }
+    if (limitExceeded) {
+      return _BottomActionBar(
+        child: OwlButton(
+          label: "Just give it a shot — maybe it'll click once you start coding",
+          onPressed: onSkip,
+        ),
+      );
+    }
     return Container(
       padding: EdgeInsets.only(
-        left: 12, right: 12, top: 12,
-        bottom: MediaQuery.paddingOf(context).bottom + 12,
+        left: 12, right: 12, top: 10,
+        bottom: MediaQuery.paddingOf(context).bottom + 8,
       ),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
         border: Border(top: BorderSide(color: scheme.outline)),
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          border: Border.all(color: scheme.outline),
-          borderRadius: BorderRadius.circular(22),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-        child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              border: Border.all(color: scheme.outline),
+              borderRadius: BorderRadius.circular(22),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+            child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
@@ -1105,7 +1163,7 @@ class _ChatComposer extends StatelessWidget {
                     height: 32,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: active ? AppColors.primary : AppColors.surfaceAlt,
+                      color: active ? AppColors.primary : scheme.surfaceContainerHighest,
                     ),
                     alignment: Alignment.center,
                     child: CkIcon.send(
@@ -1116,8 +1174,22 @@ class _ChatComposer extends StatelessWidget {
                 },
               ),
             ),
-          ],
+            ],
+          ),
         ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: onSkip,
+            child: Text(
+              'Skip to code editor →',
+              style: AppTypography.label.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/widgets/chapter_glyph.dart';
 import '../../core/widgets/ck_icons.dart';
 import '../../core/widgets/owl_button.dart';
+import '../../core/widgets/theme_toggle.dart';
+import '../../core/services/api_service.dart';
 import '../../providers/app_providers.dart';
 
 /// 7-step onboarding flow:
@@ -22,7 +26,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   static const List<String> _steps = [
-    'welcome', 'experience', 'goal', 'focus', 'hear', 'save', 'theme',
+    'welcome', 'experience', 'goal', 'focus', 'hear', 'save', 'theme', 'finish',
   ];
 
   int _step = 0;
@@ -61,6 +65,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case 'save':
         return true; // soft-gate
       case 'theme':
+        return true;
+      case 'finish':
         return true;
       default:
         return true;
@@ -105,7 +111,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   String get _ctaLabel {
     if (_stepName == 'welcome') return 'Get started';
-    if (_stepName == 'theme') return 'Enter Codekata';
+    if (_stepName == 'finish') return 'Enter Codekata';
     if (_stepName == 'save' && _save == null) return 'Maybe later';
     return 'Continue';
   }
@@ -124,7 +130,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               step: _step,
               total: _total,
               onBack: _step > 0 ? _back : null,
-              onSkip: _step > 0 ? _complete : null,
+              onSkip: (_step > 0 && _step < _total - 1) ? _complete : null,
             ),
             Expanded(
               child: GestureDetector(
@@ -232,6 +238,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             ref.read(themeModeProvider.notifier).state = v;
           },
         );
+      case 'finish':
+        return const _FinishStep();
     }
     return const SizedBox.shrink();
   }
@@ -351,31 +359,8 @@ class _CircleBtn extends StatelessWidget {
 }
 
 // ── Welcome step ──────────────────────────────────────────────
-class _WelcomeStep extends StatefulWidget {
+class _WelcomeStep extends StatelessWidget {
   const _WelcomeStep();
-
-  @override
-  State<_WelcomeStep> createState() => _WelcomeStepState();
-}
-
-class _WelcomeStepState extends State<_WelcomeStep>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 22),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -386,45 +371,23 @@ class _WelcomeStepState extends State<_WelcomeStep>
     return Column(
       children: [
         const SizedBox(height: 28),
-        SizedBox(
-          width: 104,
-          height: 104,
-          child: AnimatedBuilder(
-            animation: _c,
-            builder: (_, __) => Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(26),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [AppColors.primary, AppColors.primaryDark],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryDark.withValues(alpha: 0.28),
-                        offset: const Offset(0, 20),
-                        blurRadius: 40,
-                      ),
-                    ],
-                  ),
-                ),
-                Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(26),
-                    child: CustomPaint(
-                      painter: _WelcomeShimmer(_c.value),
-                    ),
-                  ),
-                ),
-                CustomPaint(
-                  size: const Size(52, 52),
-                  painter: _MonoGlyph(),
-                ),
-              ],
-            ),
+        Container(
+          width: 108,
+          height: 108,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(27),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primaryDark.withValues(alpha: 0.32),
+                offset: const Offset(0, 20),
+                blurRadius: 44,
+              ),
+            ],
+          ),
+          child: SvgPicture.asset(
+            'assets/icons/codekata-logo-c.svg',
+            width: 108,
+            height: 108,
           ),
         ),
         const SizedBox(height: 22),
@@ -472,69 +435,6 @@ class _WelcomeStepState extends State<_WelcomeStep>
   }
 }
 
-class _WelcomeShimmer extends CustomPainter {
-  final double t;
-  _WelcomeShimmer(this.t);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = size.longestSide;
-    final rect = Rect.fromCircle(center: center, radius: radius);
-    final shader = SweepGradient(
-      transform: GradientRotation(t * 2 * 3.141592653589793),
-      colors: [
-        const Color(0x00FFFFFF),
-        Colors.white.withValues(alpha: 0.22),
-        const Color(0x00FFFFFF),
-        const Color(0xFFC8E4FF).withValues(alpha: 0.25),
-        const Color(0x00FFFFFF),
-      ],
-      stops: const [0.0, 0.15, 0.4, 0.55, 0.85],
-    ).createShader(rect);
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = shader
-        ..blendMode = BlendMode.overlay,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_WelcomeShimmer old) => old.t != t;
-}
-
-class _MonoGlyph extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final scale = size.width / 52;
-    canvas.save();
-    canvas.scale(scale);
-    final stroke = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final p = Path()
-      ..moveTo(10, 26)
-      ..lineTo(16, 20)
-      ..lineTo(22, 26)
-      ..lineTo(28, 20)
-      ..lineTo(42, 34);
-    canvas.drawPath(p, stroke);
-    canvas.drawCircle(
-      const Offset(40, 16),
-      3,
-      Paint()..color = Colors.white,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_MonoGlyph old) => false;
-}
-
 enum _FeatureIcon { bolt, flame, check }
 
 class _WelcomeFeature extends StatelessWidget {
@@ -559,9 +459,9 @@ class _WelcomeFeature extends StatelessWidget {
     final textSecondary =
         isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
 
-    final CkIcon ck = switch (icon) {
+    final Widget ck = switch (icon) {
       _FeatureIcon.bolt => const CkIcon.bolt(size: 17, color: AppColors.primaryDark),
-      _FeatureIcon.flame => const CkIcon.flame(size: 17, color: AppColors.primaryDark),
+      _FeatureIcon.flame => const Icon(Icons.local_fire_department_rounded, size: 17, color: AppColors.primaryDark),
       _FeatureIcon.check => const CkIcon.check(size: 17, color: AppColors.primaryDark),
     };
 
@@ -1043,18 +943,119 @@ class _GoalTile extends StatelessWidget {
 }
 
 // ── Save progress step (Apple / Google / email) ───────────────
-class _SaveStep extends StatelessWidget {
+class _SaveStep extends ConsumerStatefulWidget {
   final String? value;
   final ValueChanged<String> onChange;
 
   const _SaveStep({required this.value, required this.onChange});
 
   @override
+  ConsumerState<_SaveStep> createState() => _SaveStepState();
+}
+
+class _SaveStepState extends ConsumerState<_SaveStep> {
+  String? _loading; // 'apple' | 'google' | 'email' | null
+  bool _showEmailForm = false;
+  bool _isSignIn = true;
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _authWithProvider(String provider) async {
+    final api = ref.read(apiServiceProvider);
+    setState(() => _loading = provider);
+    try {
+      final bool authenticated;
+      if (provider == 'google') {
+        authenticated = await api.loginWithGoogle();
+      } else {
+        authenticated = await api.loginWithApple();
+      }
+      if (!authenticated) return; // user cancelled
+      await _handlePostAuth(provider);
+    } on ApiException catch (e) {
+      if (mounted) _showError(e.message);
+    } catch (e) {
+      if (mounted) _showError('Sign-in failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = null);
+    }
+  }
+
+  Future<void> _submitEmailForm() async {
+    final api = ref.read(apiServiceProvider);
+    final email = _emailCtrl.text.trim();
+    final pass = _passCtrl.text;
+    if (email.isEmpty || pass.isEmpty) {
+      _showError('Please enter your email and password.');
+      return;
+    }
+    setState(() => _loading = 'email');
+    try {
+      if (_isSignIn) {
+        await api.login(email: email, password: pass);
+      } else {
+        await api.register(
+          email: email,
+          password: pass,
+          name: email.split('@').first,
+        );
+      }
+      await _handlePostAuth('email');
+    } on ApiException catch (e) {
+      if (mounted) {
+        _showError(e.statusCode == 409
+            ? 'Email already exists — try signing in instead.'
+            : e.statusCode == 401
+                ? 'Incorrect email or password.'
+                : e.message);
+      }
+    } catch (e) {
+      if (mounted) _showError('Sign-in failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = null);
+    }
+  }
+
+  Future<void> _handlePostAuth(String provider) async {
+    final api = ref.read(apiServiceProvider);
+    try {
+      final me = await api.getMe();
+      await ref.read(userProfileProvider.notifier).loadFromApi(api);
+      if (me['onboarding_complete'] == true) {
+        // Returning user — skip straight to home
+        ref.read(onboardingCompleteProvider.notifier).state = true;
+        return;
+      }
+    } catch (_) {}
+    widget.onChange(provider);
+    if (provider == 'email' && mounted) setState(() => _showEmailForm = false);
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textSecondary =
         isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
-    final textTertiary = isDark ? AppColors.darkTextSecondary : AppColors.textDisabled;
+    final textTertiary =
+        isDark ? AppColors.darkTextSecondary : AppColors.textDisabled;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1080,41 +1081,72 @@ class _SaveStep extends StatelessWidget {
         const SizedBox(height: 18),
         _ProviderButton(
           label: 'Continue with Apple',
-          glyph: 'A',
+          iconWidget: const FaIcon(FontAwesomeIcons.apple, color: Colors.white, size: 17),
           bg: Colors.black,
           fg: Colors.white,
-          selected: value == 'apple',
-          onTap: () {
-            HapticFeedback.selectionClick();
-            onChange('apple');
-          },
+          selected: widget.value == 'apple',
+          loading: _loading == 'apple',
+          onTap: _loading != null
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  _authWithProvider('apple');
+                },
         ),
         const SizedBox(height: 10),
         _ProviderButton(
           label: 'Continue with Google',
-          glyph: 'G',
-          bg: Colors.white,
-          fg: const Color(0xFF1A1F2E),
+          iconWidget: SvgPicture.asset(
+            'assets/icons/google.svg',
+            width: 16,
+            height: 16,
+          ),
+          bg: isDark ? AppColors.darkSurfaceAlt : Colors.white,
+          fg: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary,
           bordered: true,
-          selected: value == 'google',
-          onTap: () {
-            HapticFeedback.selectionClick();
-            onChange('google');
-          },
+          selected: widget.value == 'google',
+          loading: _loading == 'google',
+          onTap: _loading != null
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  _authWithProvider('google');
+                },
         ),
         const SizedBox(height: 10),
         _ProviderButton(
           label: 'Use email',
-          glyph: '@',
+          iconWidget: FaIcon(
+            FontAwesomeIcons.envelope,
+            color: isDark ? AppColors.primaryLight : AppColors.primaryDark,
+            size: 14,
+          ),
           bg: isDark
               ? AppColors.primary.withValues(alpha: 0.14)
               : AppColors.primarySurface,
-          fg: AppColors.primaryDark,
-          selected: value == 'email',
-          onTap: () {
-            HapticFeedback.selectionClick();
-            onChange('email');
-          },
+          fg: isDark ? AppColors.primaryLight : AppColors.primaryDark,
+          selected: widget.value == 'email',
+          loading: _loading == 'email' && !_showEmailForm,
+          onTap: _loading != null
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _showEmailForm = !_showEmailForm);
+                },
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          child: _showEmailForm
+              ? _EmailForm(
+                  emailCtrl: _emailCtrl,
+                  passCtrl: _passCtrl,
+                  isSignIn: _isSignIn,
+                  loading: _loading == 'email',
+                  onToggleMode: () => setState(() => _isSignIn = !_isSignIn),
+                  onSubmit: _submitEmailForm,
+                )
+              : const SizedBox.shrink(),
         ),
         const SizedBox(height: 16),
         Center(
@@ -1131,23 +1163,148 @@ class _SaveStep extends StatelessWidget {
   }
 }
 
+class _EmailForm extends StatelessWidget {
+  final TextEditingController emailCtrl;
+  final TextEditingController passCtrl;
+  final bool isSignIn;
+  final bool loading;
+  final VoidCallback onToggleMode;
+  final VoidCallback onSubmit;
+
+  const _EmailForm({
+    required this.emailCtrl,
+    required this.passCtrl,
+    required this.isSignIn,
+    required this.loading,
+    required this.onToggleMode,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaceBg = isDark ? AppColors.darkSurface : AppColors.surface;
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+    final textSecondary =
+        isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+
+    InputDecoration fieldDecoration(String hint) => InputDecoration(
+          hintText: hint,
+          hintStyle: AppTypography.body.copyWith(color: textSecondary, fontSize: 14),
+          filled: true,
+          fillColor: surfaceBg,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: borderColor),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: borderColor),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide:
+                const BorderSide(color: AppColors.primary, width: 1.5),
+          ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            textInputAction: TextInputAction.next,
+            style: AppTypography.body.copyWith(fontSize: 14),
+            decoration: fieldDecoration('Email address'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: passCtrl,
+            obscureText: true,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => onSubmit(),
+            style: AppTypography.body.copyWith(fontSize: 14),
+            decoration: fieldDecoration('Password'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: loading ? null : onSubmit,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: loading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            isSignIn ? 'Sign In' : 'Create Account',
+                            style: AppTypography.bodyLg.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: onToggleMode,
+                child: Text(
+                  isSignIn ? 'New here?' : 'Have an account?',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.primary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ProviderButton extends StatelessWidget {
   final String label;
-  final String glyph;
+  final Widget iconWidget;
   final Color bg;
   final Color fg;
   final bool selected;
   final bool bordered;
-  final VoidCallback onTap;
+  final bool loading;
+  final VoidCallback? onTap;
 
   const _ProviderButton({
     required this.label,
-    required this.glyph,
+    required this.iconWidget,
     required this.bg,
     required this.fg,
     required this.selected,
     required this.onTap,
     this.bordered = false,
+    this.loading = false,
   });
 
   @override
@@ -1155,7 +1312,7 @@ class _ProviderButton extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = isDark ? AppColors.darkBorder : AppColors.border;
     final chipBg = bordered
-        ? (isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt)
+        ? (isDark ? AppColors.darkSurfaceAlt : Colors.white)
         : Colors.white.withValues(alpha: 0.15);
 
     return GestureDetector(
@@ -1191,14 +1348,16 @@ class _ProviderButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(7),
               ),
               alignment: Alignment.center,
-              child: Text(
-                glyph,
-                style: AppTypography.h3.copyWith(
-                  color: fg,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              child: loading
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: fg,
+                      ),
+                    )
+                  : iconWidget,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1211,7 +1370,7 @@ class _ProviderButton extends StatelessWidget {
                 ),
               ),
             ),
-            if (selected) CkIcon.check(size: 18, color: fg),
+            if (selected && !loading) CkIcon.check(size: 18, color: fg),
           ],
         ),
       ),
@@ -1231,211 +1390,93 @@ class _ThemeStep extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textSecondary =
         isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
-    final surface = isDark ? AppColors.darkSurface : AppColors.surface;
-    final border = isDark ? AppColors.darkBorder : AppColors.border;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'ONE LAST THING',
+          'ALMOST THERE',
           style: AppTypography.eyebrow.copyWith(color: textSecondary),
         ),
         const SizedBox(height: 8),
         Text('Pick a theme', style: AppTypography.h1),
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            Expanded(
-              child: _ThemeTile(
-                label: 'Light',
-                mode: ThemeMode.light,
-                selected: value == ThemeMode.light,
-                onTap: () => onChange(ThemeMode.light),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _ThemeTile(
-                label: 'Dark',
-                mode: ThemeMode.dark,
-                selected: value == ThemeMode.dark,
-                onTap: () => onChange(ThemeMode.dark),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _ThemeTile(
-                label: 'System',
-                mode: ThemeMode.system,
-                selected: value == ThemeMode.system,
-                onTap: () => onChange(ThemeMode.system),
-              ),
-            ),
-          ],
+        const SizedBox(height: 8),
+        Text(
+          'You can change this anytime in settings.',
+          style: AppTypography.caption.copyWith(color: textSecondary, fontSize: 13),
         ),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(AppRadius.xl),
-            border: Border.all(color: border),
-          ),
-          child: Column(
-            children: [
-              const ChapterGlyph(kind: GlyphKind.hash, size: 48),
-              const SizedBox(height: 10),
-              Text(
-                "You're all set",
-                style: AppTypography.h2.copyWith(fontSize: 20),
-              ),
-              const SizedBox(height: 4),
-              RichText(
-                textAlign: TextAlign.center,
-                text: TextSpan(
-                  style: AppTypography.caption.copyWith(
-                    color: textSecondary, fontSize: 13,
-                  ),
-                  children: [
-                    const TextSpan(text: 'First lesson: '),
-                    TextSpan(
-                      text: 'Two Sum',
-                      style: AppTypography.label.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: isDark
-                            ? AppColors.darkTextPrimary
-                            : AppColors.textPrimary,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const TextSpan(text: ' · 8 min'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        const SizedBox(height: 28),
+        ThemeToggle(value: value, onChange: onChange),
       ],
     );
   }
 }
 
-class _ThemeTile extends StatelessWidget {
-  final String label;
-  final ThemeMode mode;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ThemeTile({
-    required this.label,
-    required this.mode,
-    required this.selected,
-    required this.onTap,
-  });
+// ── Finish step ───────────────────────────────────────────────
+class _FinishStep extends StatelessWidget {
+  const _FinishStep();
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppColors.darkSurface : AppColors.surface;
-    final border = isDark ? AppColors.darkBorder : AppColors.border;
-    final textPrimary =
-        isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+    final textSecondary =
+        isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+    final screenH = MediaQuery.of(context).size.height;
+    final topPad = MediaQuery.paddingOf(context).top;
 
-    final preview = switch (mode) {
-      ThemeMode.light => const _ThemePreview(light: true),
-      ThemeMode.dark => const _ThemePreview(light: false),
-      ThemeMode.system => const _ThemePreviewSystem(),
-    };
-
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
-        decoration: BoxDecoration(
-          color: selected
-              ? (isDark
-                  ? AppColors.primary.withValues(alpha: 0.12)
-                  : AppColors.primarySurface)
-              : surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? AppColors.primary : border,
-            width: selected ? 2 : 1,
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: screenH - topPad - 180),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 88,
+            height: 88,
+            decoration: const BoxDecoration(
+              color: AppColors.successLight,
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: CkIcon.check(size: 44, color: AppColors.successDark),
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: border),
+          const SizedBox(height: 24),
+          Text(
+            "You're all set!",
+            style: AppTypography.display.copyWith(fontSize: 34, height: 1.1),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: RichText(
+              textAlign: TextAlign.center,
+              text: TextSpan(
+                style: AppTypography.body.copyWith(
+                  color: textSecondary,
+                  fontSize: 15,
+                  height: 1.55,
+                ),
+                children: [
+                  const TextSpan(text: 'Your first lesson is ready — '),
+                  TextSpan(
+                    text: 'Two Sum',
+                    style: AppTypography.label.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? AppColors.darkTextPrimary
+                          : AppColors.textPrimary,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const TextSpan(text: '\nEst. 8 min · +20 XP'),
+                ],
               ),
-              clipBehavior: Clip.antiAlias,
-              child: preview,
             ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: AppTypography.label.copyWith(
-                fontSize: 13,
-                color: selected ? AppColors.primaryDark : textPrimary,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ThemePreview extends StatelessWidget {
-  final bool light;
-  const _ThemePreview({required this.light});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: light ? Colors.white : const Color(0xFF1A1F2E),
-      alignment: Alignment.center,
-      child: light
-          ? const CkIcon.sun(size: 22, color: AppColors.textPrimary)
-          : const CkIcon.moon(size: 22, color: Colors.white),
-    );
-  }
-}
-
-class _ThemePreviewSystem extends StatelessWidget {
-  const _ThemePreviewSystem();
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _SystemPreviewPainter(),
-    );
-  }
-}
-
-class _SystemPreviewPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width / 2, size.height),
-      Paint()..color = Colors.white,
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(size.width / 2, 0, size.width / 2, size.height),
-      Paint()..color = const Color(0xFF1A1F2E),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_SystemPreviewPainter old) => false;
-}

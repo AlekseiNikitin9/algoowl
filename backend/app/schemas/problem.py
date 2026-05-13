@@ -15,10 +15,12 @@ class ProblemResponse(BaseModel):
     title: str
     slug: str
     category_id: str
+    category_slug: str = ""
     difficulty: str
     description: str
     constraints: str | None
     starter_code: dict
+    lesson_content: dict | None = None
     test_cases: list[TestCaseResponse] = []
 
     class Config:
@@ -31,6 +33,7 @@ class ProblemListItem(BaseModel):
     slug: str
     difficulty: str
     category_id: str
+    category_slug: str = ""
 
     class Config:
         from_attributes = True

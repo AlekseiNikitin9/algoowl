@@ -25,6 +25,7 @@ class User(Base):
     experience_level: Mapped[str] = mapped_column(String(20), default="beginner")
     focus: Mapped[str] = mapped_column(String(20), default="both")
     onboarding_complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

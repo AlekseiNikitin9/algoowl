@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -23,6 +25,15 @@ class TokenResponse(BaseModel):
     user_id: str
 
 
+class GoogleTokenRequest(BaseModel):
+    id_token: str
+
+
+class AppleTokenRequest(BaseModel):
+    identity_token: str
+    full_name: str | None = None
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -33,6 +44,8 @@ class UserResponse(BaseModel):
     experience_level: str
     focus: str
     onboarding_complete: bool
+    avatar_url: str | None = None
+    created_at: datetime | None = None
 
     class Config:
         from_attributes = True

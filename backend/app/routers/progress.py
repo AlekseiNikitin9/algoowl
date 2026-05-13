@@ -9,6 +9,7 @@ from ..models.problem import Problem
 from ..models.progress import SpacedRep
 from ..models.user import User
 from ..schemas.progress import (
+    CategoryStatusItem,
     OnboardingRequest,
     ProgressResponse,
     ReviewQueueItem,
@@ -16,11 +17,15 @@ from ..schemas.progress import (
 )
 from ..services.auth_service import get_current_user
 from ..services.progress_service import (
+    get_category_statuses,
+    get_solved_slugs,
     get_user_stats,
     save_onboarding,
     update_settings,
 )
+from ..utils.logging import get_logger
 
+log = get_logger("routers.progress")
 router = APIRouter(prefix="/progress", tags=["progress"])
 
 
@@ -30,6 +35,7 @@ async def get_my_progress(
     db: AsyncSession = Depends(get_db),
 ):
     """Home screen stats — XP, streak, solve counts."""
+    log.info("get_my_progress user=%s", user.id)
     stats = await get_user_stats(db, user)
     return ProgressResponse(**stats)
 
@@ -41,6 +47,7 @@ async def patch_settings(
     db: AsyncSession = Depends(get_db),
 ):
     """Update daily goal, experience level, or focus."""
+    log.info("patch_settings user=%s body=%s", user.id, body.model_dump(exclude_none=True))
     await update_settings(
         db,
         user,
@@ -59,6 +66,7 @@ async def complete_onboarding(
     db: AsyncSession = Depends(get_db),
 ):
     """Save onboarding selections and mark complete."""
+    log.info("complete_onboarding user=%s", user.id)
     await save_onboarding(
         db,
         user,
@@ -70,12 +78,34 @@ async def complete_onboarding(
     return ProgressResponse(**stats)
 
 
+@router.get("/me/solved-slugs")
+async def get_my_solved_slugs(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return slugs of all problems this user has solved."""
+    log.info("get_my_solved_slugs user=%s", user.id)
+    slugs = await get_solved_slugs(db, user)
+    return {"slugs": slugs}
+
+
+@router.get("/me/category-status", response_model=list[CategoryStatusItem])
+async def get_my_category_status(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return per-category lock/progress status based on user progress."""
+    log.info("get_my_category_status user=%s", user.id)
+    return await get_category_statuses(db, user)
+
+
 @router.get("/me/queue", response_model=list[ReviewQueueItem])
 async def get_review_queue(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Return problems due for spaced-rep review today."""
+    log.info("get_review_queue user=%s", user.id)
     now = datetime.now(timezone.utc)
     result = await db.execute(
         select(SpacedRep, Problem)
@@ -89,6 +119,7 @@ async def get_review_queue(
     )
     rows = result.all()
 
+    log.info("get_review_queue user=%s returning %d items", user.id, len(rows))
     return [
         ReviewQueueItem(
             problem_id=str(sr.problem_id),

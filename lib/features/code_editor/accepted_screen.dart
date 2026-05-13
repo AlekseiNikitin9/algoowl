@@ -15,7 +15,8 @@ import '../../providers/app_providers.dart';
 /// "Accepted" screen — large success badge, count-up XP, stat grid, chapter progress.
 class AcceptedScreen extends ConsumerStatefulWidget {
   final String problemSlug;
-  const AcceptedScreen({super.key, required this.problemSlug});
+  final Map<String, String>? complexity;
+  const AcceptedScreen({super.key, required this.problemSlug, this.complexity});
 
   @override
   ConsumerState<AcceptedScreen> createState() => _AcceptedScreenState();
@@ -134,6 +135,10 @@ class _AcceptedScreenState extends ConsumerState<AcceptedScreen>
                         return _StatGrid(
                           xp: xp,
                           streakDays: streak + 1,
+                          userTime: widget.complexity?['time'],
+                          userSpace: widget.complexity?['space'],
+                          optimalTime: _problem.optimalTime,
+                          optimalSpace: _problem.optimalSpace,
                         );
                       },
                     ),
@@ -225,7 +230,19 @@ class _SuccessBadge extends StatelessWidget {
 class _StatGrid extends StatelessWidget {
   final int xp;
   final int streakDays;
-  const _StatGrid({required this.xp, required this.streakDays});
+  final String? userTime;
+  final String? userSpace;
+  final String optimalTime;
+  final String optimalSpace;
+
+  const _StatGrid({
+    required this.xp,
+    required this.streakDays,
+    this.userTime,
+    this.userSpace,
+    required this.optimalTime,
+    required this.optimalSpace,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -235,12 +252,22 @@ class _StatGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
-      childAspectRatio: 2.3,
+      childAspectRatio: 1.8,
       children: [
         _StatTile(label: 'XP earned', value: '+$xp', highlight: true),
         _StatTile(label: 'Streak', value: '$streakDays days'),
-        _StatTile(label: 'Time', value: 'O(n)', mono: true),
-        _StatTile(label: 'Space', value: 'O(n)', mono: true),
+        _StatTile(
+          label: 'Time',
+          value: userTime ?? '…',
+          sublabel: 'optimal $optimalTime',
+          mono: true,
+        ),
+        _StatTile(
+          label: 'Space',
+          value: userSpace ?? '…',
+          sublabel: 'optimal $optimalSpace',
+          mono: true,
+        ),
       ],
     );
   }
@@ -249,12 +276,14 @@ class _StatGrid extends StatelessWidget {
 class _StatTile extends StatelessWidget {
   final String label;
   final String value;
+  final String? sublabel;
   final bool highlight;
   final bool mono;
 
   const _StatTile({
     required this.label,
     required this.value,
+    this.sublabel,
     this.highlight = false,
     this.mono = false,
   });
@@ -289,6 +318,7 @@ class _StatTile extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             label.toUpperCase(),
@@ -298,15 +328,25 @@ class _StatTile extends StatelessWidget {
               letterSpacing: 0.12 * 10,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             value,
             style: (mono ? AppTypography.codeBody : AppTypography.display).copyWith(
               color: valueColor,
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (sublabel != null) ...[
+            const SizedBox(height: 1),
+            Text(
+              sublabel!,
+              style: AppTypography.caption.copyWith(
+                color: labelColor.withValues(alpha: 0.6),
+                fontSize: 10,
+              ),
+            ),
+          ],
         ],
       ),
     );

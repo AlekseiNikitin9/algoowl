@@ -49,6 +49,7 @@ class _PrimaryCardState extends State<PrimaryCard>
       borderRadius: BorderRadius.circular(AppRadius.xl),
       child: AnimatedBuilder(
         animation: _c,
+        child: Padding(padding: widget.padding, child: widget.child),
         builder: (_, child) => Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.xl),
@@ -59,14 +60,14 @@ class _PrimaryCardState extends State<PrimaryCard>
             ),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primaryDark.withValues(alpha: 0.14),
+                color: AppColors.primaryDark.withValues(alpha: 0.12),
                 offset: const Offset(0, 2),
                 blurRadius: 4,
               ),
               BoxShadow(
-                color: AppColors.primaryDark.withValues(alpha: 0.22),
-                offset: const Offset(0, 14),
-                blurRadius: 34,
+                color: AppColors.primaryDark.withValues(alpha: 0.14),
+                offset: const Offset(0, 6),
+                blurRadius: 16,
               ),
             ],
           ),
@@ -81,7 +82,7 @@ class _PrimaryCardState extends State<PrimaryCard>
                     ),
                   ),
                 ),
-                Padding(padding: widget.padding, child: child),
+                child!,
               ],
             ),
           ),

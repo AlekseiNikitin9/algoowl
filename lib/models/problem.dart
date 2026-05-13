@@ -61,6 +61,8 @@ class Problem {
   final int xp;
   final int minutes;
   final bool solved;
+  final String optimalTime;
+  final String optimalSpace;
 
   const Problem({
     required this.id,
@@ -77,7 +79,50 @@ class Problem {
     this.xp = 20,
     this.minutes = 10,
     this.solved = false,
+    this.optimalTime = 'O(n)',
+    this.optimalSpace = 'O(n)',
   });
+
+  static Difficulty _diff(String s) {
+    switch (s) {
+      case 'medium': return Difficulty.medium;
+      case 'hard': return Difficulty.hard;
+      default: return Difficulty.easy;
+    }
+  }
+
+  factory Problem.fromApi(Map<String, dynamic> data, {Problem? local}) {
+    final slug = data['slug'] as String;
+    final catSlug = data['category_slug'] as String?;
+    return Problem(
+      id: data['id'] as String,
+      title: data['title'] as String,
+      slug: slug,
+      categoryId: (catSlug != null && catSlug.isNotEmpty)
+          ? catSlug
+          : data['category_id'] as String,
+      difficulty: _diff(data['difficulty'] as String? ?? 'easy'),
+      description: data['description'] as String,
+      constraints: data['constraints'] as String? ?? '',
+      starterCode: Map<String, String>.from(
+        (data['starter_code'] as Map<String, dynamic>? ?? {})
+            .map((k, v) => MapEntry(k, v.toString())),
+      ),
+      testCases: ((data['test_cases'] as List?) ?? [])
+          .map((tc) => TestCase(
+                input: tc['input'] as String,
+                expectedOutput: tc['expected_output'] as String,
+                isHidden: tc['is_hidden'] as bool? ?? false,
+              ))
+          .toList(),
+      hints: local?.hints ?? const [],
+      lessonContent: local?.lessonContent ?? const LessonContent(),
+      xp: local?.xp ?? 20,
+      minutes: local?.minutes ?? 10,
+      optimalTime: local?.optimalTime ?? 'O(n)',
+      optimalSpace: local?.optimalSpace ?? 'O(n)',
+    );
+  }
 }
 
 // ── Sample problems ───────────────────────────────────────────
@@ -107,6 +152,8 @@ final List<Problem> kSampleProblems = [
       'javascript':
           'function twoSum(nums, target) {\n    // your code here\n}',
     },
+    optimalTime: 'O(n)',
+    optimalSpace: 'O(n)',
     hints: [
       'Think about what you need to find for each number as you walk the array.',
       'For each nums[i], you need to know if (target - nums[i]) exists somewhere.',
@@ -189,6 +236,8 @@ final List<Problem> kSampleProblems = [
       'javascript':
           'function containsDuplicate(nums) {\n    // your code here\n}',
     },
+    optimalTime: 'O(n)',
+    optimalSpace: 'O(n)',
     hints: [
       'You need to detect if any value repeats. What data structure is built for uniqueness?',
       'A set only stores unique values. Adding a duplicate to a set fails or is a no-op - use that.',
@@ -268,6 +317,8 @@ final List<Problem> kSampleProblems = [
       'javascript':
           'function isAnagram(s, t) {\n    // your code here\n}',
     },
+    optimalTime: 'O(n)',
+    optimalSpace: 'O(n)',
     hints: [
       'Two strings are anagrams if they have the same characters in the same quantities.',
       'Try counting how many times each character appears in each string.',

@@ -7,6 +7,8 @@ class UserProfile {
   final String experienceLevel; // beginner, intermediate, advanced
   final String focus; // interview, learn, both
   final String hearAboutUs; // tiktok, instagram, linkedin, twitter, youtube, school, friend, other
+  final String? avatarUrl;
+  final DateTime? createdAt;
 
   const UserProfile({
     required this.id,
@@ -17,6 +19,8 @@ class UserProfile {
     this.experienceLevel = 'beginner',
     this.focus = 'both',
     this.hearAboutUs = '',
+    this.avatarUrl,
+    this.createdAt,
   });
 
   UserProfile copyWith({
@@ -27,6 +31,8 @@ class UserProfile {
     String? experienceLevel,
     String? focus,
     String? hearAboutUs,
+    String? avatarUrl,
+    DateTime? createdAt,
   }) {
     return UserProfile(
       id: id,
@@ -37,6 +43,8 @@ class UserProfile {
       experienceLevel: experienceLevel ?? this.experienceLevel,
       focus: focus ?? this.focus,
       hearAboutUs: hearAboutUs ?? this.hearAboutUs,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

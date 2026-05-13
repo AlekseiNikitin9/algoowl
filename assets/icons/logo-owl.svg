@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Minimalist owl face — for the AlgoOwl brand angle.
+       Circular head, two eye rings with pupils, a small beak,
+       and two filled ear tufts at the top. Approachable and instantly distinctive. -->
+
+  <!-- Head outline -->
+  <circle cx="16" cy="17" r="13" fill="none" stroke="currentColor" stroke-width="1.5"/>
+
+  <!-- Ear tufts (drawn after circle so they cover the stroke line where they overlap) -->
+  <path fill="currentColor" d="M10 7 L8 2 L13 6 Z"/>
+  <path fill="currentColor" d="M22 7 L24 2 L19 6 Z"/>
+
+  <!-- Left eye socket -->
+  <circle cx="11" cy="16" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <!-- Right eye socket -->
+  <circle cx="21" cy="16" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+
+  <!-- Left pupil -->
+  <circle cx="11" cy="16" r="1.8" fill="currentColor"/>
+  <!-- Right pupil -->
+  <circle cx="21" cy="16" r="1.8" fill="currentColor"/>
+
+  <!-- Beak (small inverted triangle between and below the eyes) -->
+  <path fill="currentColor" d="M14 21 L16 24 L18 21 Z"/>
+</svg>

@@ -94,9 +94,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/accepted/:slug',
         pageBuilder: (context, state) {
           final slug = state.pathParameters['slug']!;
+          final complexity = state.extra as Map<String, String>?;
           return CustomTransitionPage(
             key: state.pageKey,
-            child: AcceptedScreen(problemSlug: slug),
+            child: AcceptedScreen(problemSlug: slug, complexity: complexity),
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
               return FadeTransition(opacity: animation, child: child);
             },

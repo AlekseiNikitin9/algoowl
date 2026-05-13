@@ -11,6 +11,9 @@ from ..models.problem import Problem, TestCase
 from ..models.submission import Submission
 from ..models.progress import UserProgress
 from ..utils.redis import get_redis
+from ..utils.logging import get_logger
+
+log = get_logger("submissions")
 
 
 async def create_submission(
@@ -21,12 +24,21 @@ async def create_submission(
     code: str,
 ) -> Submission:
     """Validate, persist, and enqueue a code submission."""
+    log.info("submit START user=%s problem_id=%s lang=%s", user_id, problem_id, language)
+
     # Verify problem exists
+    try:
+        problem_uuid = uuid.UUID(problem_id)
+    except ValueError:
+        log.error("submit FAIL invalid UUID problem_id=%r", problem_id)
+        raise HTTPException(status_code=400, detail="Invalid problem_id format")
+
     result = await db.execute(
-        select(Problem).where(Problem.id == uuid.UUID(problem_id))
+        select(Problem).where(Problem.id == problem_uuid)
     )
     problem = result.scalar_one_or_none()
     if not problem:
+        log.error("submit FAIL problem not found problem_id=%s", problem_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Problem not found",
@@ -91,6 +103,7 @@ async def create_submission(
         ],
     }
     await redis.lpush("exec:queue", json.dumps(job_payload))
+    log.info("submit ENQUEUED submission_id=%s problem=%s", submission.id, problem.slug)
 
     return submission
 

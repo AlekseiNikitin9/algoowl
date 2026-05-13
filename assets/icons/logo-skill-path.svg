@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Zigzag skill path: mirrors the app's own skill tree visual language.
+       4 nodes connected by a winding upward path — the journey of a learner. -->
+  <polyline
+    points="14,27 22,19 10,11 18,3"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Completed nodes -->
+  <circle cx="14" cy="27" r="2.5" fill="currentColor"/>
+  <circle cx="22" cy="19" r="2.5" fill="currentColor"/>
+  <circle cx="10" cy="11" r="2.5" fill="currentColor"/>
+  <!-- Destination node (slightly larger — the goal) -->
+  <circle cx="18" cy="3"  r="3.5" fill="currentColor"/>
+</svg>

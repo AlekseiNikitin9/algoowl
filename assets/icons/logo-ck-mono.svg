@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32">
+  <!-- CK monogram: C (open arc) + K (vertical bar + two angular strokes).
+       The C is a thick open circle suggesting a progress arc / incomplete journey.
+       The K's diagonal strokes lean forward aggressively, suggesting speed and momentum.
+       Slightly wider canvas (40px) to accommodate the two-letter lockup. -->
+
+  <!-- C: open arc, 3/4 circle, rounded ends -->
+  <!-- Center of C: (13, 16), radius 10 -->
+  <!-- Arc from lower-right (≈−30°) clockwise around to upper-right (≈30°),
+       leaving a gap on the right. -->
+  <!-- Lower-right point: (13 + 10*cos(−30°), 16 + 10*sin(−30°)) = (21.66, 11) → approx (21.5, 11) -->
+  <!-- Upper-right point: (13 + 10*cos(30°), 16 − 10*sin(30°)) = (21.66, 21) → approx (21.5, 21) -->
+  <!-- Arc going counterclockwise (sweep=0) spanning 300°, large-arc=1 -->
+  <path
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    d="M 21.5 21 A 10 10 0 1 1 21.5 11"
+  />
+
+  <!-- K: vertical bar + two angular arms -->
+  <!-- Vertical bar at x=27, from y=6 to y=26 -->
+  <line x1="27" y1="6" x2="27" y2="26" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Upper arm: from midpoint (27, 16) sweeping to upper-right (37, 6) — aggressive forward lean -->
+  <line x1="27" y1="16" x2="37" y2="6"  stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Lower arm: from midpoint (27, 16) sweeping to lower-right (37, 26) -->
+  <line x1="27" y1="16" x2="37" y2="26" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

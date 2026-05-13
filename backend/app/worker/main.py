@@ -101,9 +101,23 @@ async def process_submission(redis_client: redis.Redis, job_data: dict):
             )
             progress = prog_result.scalar_one_or_none()
 
-            if progress and progress.status != "solved":
+            already_solved = progress is not None and progress.status == "solved"
+
+            if progress is None:
+                from datetime import datetime, timezone
+                progress = UserProgress(
+                    user_id=submission.user_id,
+                    problem_id=submission.problem_id,
+                    status="solved",
+                    attempts=1,
+                    last_attempt_at=datetime.now(timezone.utc),
+                )
+                db.add(progress)
+                logger.info(f"Created solved UserProgress for submission {submission_id}")
+            elif progress.status != "solved":
                 progress.status = "solved"
 
+            if not already_solved:
                 from app.models.problem import Problem
                 prob_result = await db.execute(
                     select(Problem).where(Problem.id == submission.problem_id)

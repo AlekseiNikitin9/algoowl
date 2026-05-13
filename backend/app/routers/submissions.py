@@ -14,7 +14,9 @@ from ..schemas.submission import (
 from ..services.auth_service import get_current_user
 from ..services.submission_service import create_submission, get_submission
 from ..worker.executor import run_in_container
+from ..utils.logging import get_logger
 
+log = get_logger("routers.submissions")
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
 
@@ -25,6 +27,7 @@ async def submit_code(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit code for execution. Returns immediately with pending status."""
+    log.info("submit_code user=%s problem=%s language=%s", user.id, body.problem_id, body.language)
     submission = await create_submission(
         db=db,
         user_id=user.id,
@@ -32,6 +35,7 @@ async def submit_code(
         language=body.language,
         code=body.code,
     )
+    log.info("submit_code created submission=%s status=%s", submission.id, submission.status)
     return SubmissionResponse(
         submission_id=str(submission.id),
         status=submission.status,
@@ -49,12 +53,14 @@ async def get_submission_result(
     db: AsyncSession = Depends(get_db),
 ):
     """Poll for submission result. Frontend calls this every 600ms until status != pending."""
+    log.info("get_submission_result id=%s user=%s", submission_id, user.id)
     submission = await get_submission(db, submission_id, user.id)
 
     feedback = submission.ai_feedback or {}
     test_results = feedback.get("test_results", [])
     stdout = feedback.get("stdout")
     error = feedback.get("error")
+    log.info("get_submission_result id=%s status=%s", submission_id, submission.status)
 
     return SubmissionResponse(
         submission_id=str(submission.id),
@@ -75,6 +81,7 @@ async def run_custom(
     user: User = Depends(get_current_user),
 ):
     """Run code against a single custom test case — no DB storage, instant response."""
+    log.info("run_custom user=%s language=%s", user.id, body.language)
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
         None,
@@ -86,6 +93,7 @@ async def run_custom(
 
     test_results = result.get("test_results", [])
     actual = test_results[0].get("actual") if test_results else None
+    log.info("run_custom user=%s status=%s runtime_ms=%s", user.id, result.get("status"), result.get("runtime_ms"))
 
     return RunCodeResponse(
         status=result.get("status", "runtime_error"),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/ck_icons.dart';
 import '../../core/widgets/code_dust.dart';
@@ -75,18 +76,24 @@ class CodeEditorScreen extends ConsumerStatefulWidget {
 
 class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
   late Problem _problem;
-  late _SyntaxController _code;
+  _SyntaxController? _code;
   late FocusNode _focus;
+  bool _loading = true;
 
   String _lang = 'python';
   bool _showHint = false;
   bool _running = false;
+  bool _runningTest = false;
   String? _status; // 'passed' | 'failed' | null
   int? _passed;
   int? _total;
   String? _errorMsg;
+  Map<String, dynamic>? _runResult;
   List<_Snippet> _suggestions = const [];
   bool _showDust = false;
+
+  final _textFieldKey = GlobalKey();
+  OverlayEntry? _overlayEntry;
 
   List<_Snippet> get _activeSnippets =>
       _lang == 'python' ? _pythonSnippets : _jsSnippets;
@@ -94,32 +101,58 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
   @override
   void initState() {
     super.initState();
-    final problems = ref.read(problemsProvider);
-    _problem = problems.firstWhere(
-      (p) => p.slug == widget.problemSlug,
-      orElse: () => problems.first,
-    );
-    _code = _SyntaxController(_lang);
-    _code.text = _problem.starterCode[_lang] ?? 'def solve():\n    pass';
-    _code.addListener(_onCodeChanged);
     _focus = FocusNode();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focus.requestFocus();
+    _loadProblem();
+  }
+
+  Future<void> _loadProblem() async {
+    // Check local sample problems first (instant, no network)
+    Problem? result;
+    for (final p in kSampleProblems) {
+      if (p.slug == widget.problemSlug) { result = p; break; }
+    }
+
+    if (result == null) {
+      try {
+        final api = ref.read(apiServiceProvider);
+        await api.ensureAuth();
+        final data = await api.getProblem(widget.problemSlug);
+        // Merge API data with any local lesson content for this slug
+        Problem? local;
+        final slug = data['slug'] as String? ?? widget.problemSlug;
+        for (final p in kSampleProblems) {
+          if (p.slug == slug) { local = p; break; }
+        }
+        result = Problem.fromApi(data, local: local);
+      } catch (_) {
+        result = kSampleProblems.first;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _problem = result!;
+      _code = _SyntaxController(_lang);
+      _code!.text = _problem.starterCode[_lang] ?? 'def solve():\n    pass';
+      _code!.addListener(_onCodeChanged);
+      _loading = false;
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
   }
 
   @override
   void dispose() {
-    _code.removeListener(_onCodeChanged);
-    _code.dispose();
+    _removeOverlay();
+    _code?.removeListener(_onCodeChanged);
+    _code?.dispose();
     _focus.dispose();
     super.dispose();
   }
 
   String get _currentWord {
-    final sel = _code.selection;
+    final sel = _code!.selection;
     if (!sel.isValid || !sel.isCollapsed) return '';
-    final text = _code.text;
+    final text = _code!.text;
     final offset = sel.baseOffset;
     if (offset == 0) return '';
     int start = offset - 1;
@@ -136,17 +169,157 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
         ? const <_Snippet>[]
         : _activeSnippets.where((s) => s.trigger.startsWith(word)).toList();
     if (!_listEquals(next, _suggestions)) {
-      setState(() => _suggestions = next);
+      _suggestions = next;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _updateOverlay());
     }
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  Offset? _getCursorScreenPos() {
+    final ctx = _textFieldKey.currentContext;
+    if (ctx == null) return null;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+
+    final offset = _code!.selection.baseOffset.clamp(0, _code!.text.length);
+    final textUpToCursor = _code!.text.substring(0, offset);
+    final lines = textUpToCursor.split('\n');
+    final cursorLine = lines.length - 1;
+    final lastLine = lines.last;
+
+    final style = AppTypography.codeBody.copyWith(fontSize: 13, height: 20 / 13);
+    final painter = TextPainter(
+      text: TextSpan(text: lastLine, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: double.infinity);
+    final cursorLocalX = painter.width;
+    painter.dispose();
+
+    const lineHeight = 20.0;
+    final cursorLocalY = cursorLine * lineHeight;
+    return box.localToGlobal(Offset(cursorLocalX, cursorLocalY));
+  }
+
+  void _updateOverlay() {
+    if (!mounted) return;
+    if (_suggestions.isEmpty || _status != null) {
+      _removeOverlay();
+      return;
+    }
+
+    final pos = _getCursorScreenPos();
+    if (pos == null) {
+      _removeOverlay();
+      return;
+    }
+
+    final overlay = Overlay.of(context);
+    final screenSize = MediaQuery.of(context).size;
+    const popupWidth = 164.0;
+    const lineHeight = 20.0;
+    final left = (pos.dx + 10).clamp(0.0, screenSize.width - popupWidth);
+    final top = pos.dy + lineHeight;
+
+    _removeOverlay();
+
+    _overlayEntry = OverlayEntry(
+      builder: (_) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final popupBg = isDark ? AppColors.codeBgAlt : Colors.white;
+        final textColor = isDark ? Colors.white : AppColors.textPrimary;
+        final snaps = _suggestions;
+        return Positioned(
+          left: left,
+          top: top,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: popupWidth,
+              constraints: const BoxConstraints(maxHeight: 220),
+              decoration: BoxDecoration(
+                color: popupBg,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                shrinkWrap: true,
+                itemCount: snaps.length,
+                itemBuilder: (_, i) {
+                  final s = snaps[i];
+                  return GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      _removeOverlay();
+                      _insertSnippet(s);
+                    },
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              s.label,
+                              style: AppTypography.codeBody.copyWith(
+                                fontSize: 12,
+                                color: textColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              s.trigger == s.label ? 'kw' : 'fn',
+                              style: AppTypography.codeBody.copyWith(
+                                fontSize: 10,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    overlay.insert(_overlayEntry!);
   }
 
   void _switchLang(String lang) {
     if (_lang == lang) return;
     HapticFeedback.selectionClick();
+    _removeOverlay();
     setState(() {
       _lang = lang;
-      _code.setLanguage(lang);
-      _code.text = _problem.starterCode[lang] ??
+      _code!.setLanguage(lang);
+      _code!.text = _problem.starterCode[lang] ??
           (lang == 'python'
               ? 'def solve():\n    pass'
               : 'function solve() {\n    \n}');
@@ -158,24 +331,50 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
 
   void _insertSnippet(_Snippet s) {
     final word = _currentWord;
-    final sel = _code.selection;
+    final sel = _code!.selection;
     if (!sel.isValid) return;
-    final text = _code.text;
+    final text = _code!.text;
     final cursor = sel.baseOffset;
     final start = cursor - word.length;
     final newText = text.replaceRange(start, cursor, s.template);
     final newCursor = start + s.template.length - s.cursorFromEnd;
-    _code.value = TextEditingValue(
+    _code!.value = TextEditingValue(
       text: newText,
       selection:
           TextSelection.collapsed(offset: newCursor.clamp(0, newText.length)),
     );
   }
 
+  Future<void> _runTest() async {
+    HapticFeedback.mediumImpact();
+    _removeOverlay();
+    setState(() { _runningTest = true; _runResult = null; });
+
+    final firstTest = _problem.testCases.where((t) => !t.isHidden).firstOrNull;
+    final api = ref.read(apiServiceProvider);
+    try {
+      final result = await api.runCustomTest(
+        language: _lang,
+        code: _code!.text,
+        testInput: firstTest?.input ?? '',
+        expectedOutput: firstTest?.expectedOutput ?? '',
+      );
+      if (!mounted) return;
+      setState(() { _runningTest = false; _runResult = result; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _runningTest = false;
+        _runResult = {'status': 'error', 'error': 'Server unavailable — start the backend to run tests.'};
+      });
+    }
+  }
+
   Future<void> _submit() async {
     HapticFeedback.mediumImpact();
     _focus.unfocus();
-    setState(() => _running = true);
+    _removeOverlay();
+    setState(() { _running = true; _runResult = null; });
 
     final api = ref.read(apiServiceProvider);
     Map<String, dynamic> result;
@@ -183,7 +382,7 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
       result = await api.submitCode(
         problemSlug: _problem.slug,
         language: _lang,
-        code: _code.text,
+        code: _code!.text,
       );
     } on ApiException catch (e) {
       result = {
@@ -192,12 +391,12 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
         'test_cases_total': 0,
         'error': e.message,
       };
-    } catch (e) {
+    } catch (_) {
       result = {
         'status': 'runtime_error',
         'test_cases_passed': 0,
         'test_cases_total': 0,
-        'error': e.toString(),
+        'error': 'Server unavailable — start the backend to submit.',
       };
     }
 
@@ -215,17 +414,29 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
 
     if (accepted) {
       ref.read(userProfileProvider.notifier).addXp(15);
+      ref.invalidate(solvedSlugsProvider);
+      ref.invalidate(categoryStatusDataProvider);
     }
   }
 
-  void _openResults() {
-    context.push('/accepted/${_problem.slug}');
+  Future<void> _openResults() async {
+    final api = ref.read(apiServiceProvider);
+    final complexity = await api.analyzeComplexity(
+      code: _code!.text,
+      language: _lang,
+    );
+    if (!mounted) return;
+    context.push('/accepted/${_problem.slug}', extra: complexity);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: AppColors.codeBg,
+      backgroundColor: isDark ? AppColors.codeBg : Theme.of(context).scaffoldBackgroundColor,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
@@ -246,14 +457,11 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
                 ),
                 if (_showHint && _problem.hints.isNotEmpty) _HintBanner(text: _problem.hints.first),
                 Expanded(child: _CodeCanvas(
-                  controller: _code,
+                  controller: _code!,
                   focus: _focus,
+                  textFieldKey: _textFieldKey,
                 )),
-                if (_suggestions.isNotEmpty && _status == null)
-                  _SuggestionBar(
-                    suggestions: _suggestions,
-                    onTap: _insertSnippet,
-                  ),
+                if (_runResult != null) _RunBanner(result: _runResult!),
                 if (_status == 'failed') _FailureBanner(
                   passed: _passed,
                   total: _total,
@@ -262,8 +470,11 @@ class _CodeEditorScreenState extends ConsumerState<CodeEditorScreen> {
                 _SubmitBar(
                   status: _status,
                   running: _running,
+                  runningTest: _runningTest,
                   onSubmit: _submit,
+                  onRunTest: _runTest,
                   onViewResults: _openResults,
+                  onDismissKeyboard: () => _focus.unfocus(),
                 ),
               ],
             ),
@@ -297,13 +508,18 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final eyebrowColor = Colors.white.withValues(alpha: 0.45);
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final contentColor = isDark ? Colors.white : scheme.onSurface;
+    final eyebrowColor = contentColor.withValues(alpha: 0.45);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : scheme.outline.withValues(alpha: 0.5),
           ),
         ),
       ),
@@ -312,7 +528,7 @@ class _TopBar extends StatelessWidget {
           _SquareBtn(
             icon: CkIcon.close(
               size: 17,
-              color: Colors.white.withValues(alpha: 0.75),
+              color: contentColor.withValues(alpha: 0.75),
             ),
             onTap: onClose,
           ),
@@ -333,7 +549,7 @@ class _TopBar extends StatelessWidget {
                 Text(
                   problem.title,
                   style: AppTypography.h3.copyWith(
-                    color: Colors.white,
+                    color: contentColor,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                   ),
@@ -364,6 +580,8 @@ class _SquareBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -371,9 +589,11 @@ class _SquareBtn extends StatelessWidget {
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: isDark ? Colors.white.withValues(alpha: 0.06) : scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.08) : scheme.outline,
+          ),
         ),
         alignment: Alignment.center,
         child: icon,
@@ -389,25 +609,33 @@ class _LangToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: isDark ? Colors.white.withValues(alpha: 0.06) : scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : scheme.outline,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _langBtn('python', 'Py'),
-          _langBtn('javascript', 'JS'),
+          _langBtn('python', 'Py', scheme, isDark),
+          _langBtn('javascript', 'JS', scheme, isDark),
         ],
       ),
     );
   }
 
-  Widget _langBtn(String key, String label) {
+  Widget _langBtn(String key, String label, ColorScheme scheme, bool isDark) {
     final active = lang == key;
+    final activeColor = isDark ? Colors.white : AppColors.primary;
+    final inactiveColor = isDark
+        ? Colors.white.withValues(alpha: 0.55)
+        : scheme.onSurfaceVariant;
     return GestureDetector(
       onTap: () => onSwitch(key),
       behavior: HitTestBehavior.opaque,
@@ -424,7 +652,7 @@ class _LangToggle extends StatelessWidget {
         child: Text(
           label,
           style: AppTypography.codeBody.copyWith(
-            color: active ? Colors.white : Colors.white.withValues(alpha: 0.55),
+            color: active ? activeColor : inactiveColor,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
@@ -438,7 +666,7 @@ class _LangToggle extends StatelessWidget {
 // Prompt strip + hint
 // ═══════════════════════════════════════════════════════════════
 
-class _PromptStrip extends StatelessWidget {
+class _PromptStrip extends StatefulWidget {
   final Problem problem;
   final bool showHint;
   final VoidCallback onToggleHint;
@@ -450,77 +678,226 @@ class _PromptStrip extends StatelessWidget {
   });
 
   @override
+  State<_PromptStrip> createState() => _PromptStripState();
+}
+
+class _PromptStripState extends State<_PromptStrip> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final contentColor = isDark ? Colors.white : scheme.onSurface;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : scheme.outline.withValues(alpha: 0.5);
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: borderColor)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.problem.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body.copyWith(
+                    color: contentColor.withValues(alpha: 0.7),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: contentColor.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  widget.onToggleHint();
+                },
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  height: 28,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: widget.showHint
+                        ? AppColors.gold.withValues(alpha: 0.15)
+                        : (isDark
+                            ? Colors.white.withValues(alpha: 0.06)
+                            : scheme.surfaceContainerHighest),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: widget.showHint
+                          ? AppColors.gold.withValues(alpha: 0.4)
+                          : (isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : scheme.outline),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CkIcon.hint(
+                        size: 13,
+                        color: widget.showHint
+                            ? AppColors.gold
+                            : contentColor.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Hint',
+                        style: AppTypography.caption.copyWith(
+                          color: widget.showHint
+                              ? AppColors.gold
+                              : contentColor.withValues(alpha: 0.75),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_expanded)
+          _ExpandedDescription(
+            problem: widget.problem,
+            isDark: isDark,
+            scheme: scheme,
+          ),
+      ],
+    );
+  }
+}
+
+class _ExpandedDescription extends StatelessWidget {
+  final Problem problem;
+  final bool isDark;
+  final ColorScheme scheme;
+
+  const _ExpandedDescription({
+    required this.problem,
+    required this.isDark,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final contentColor = isDark ? Colors.white : scheme.onSurface;
+    final examples = problem.testCases.where((t) => !t.isHidden).take(2).toList();
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
       decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.03)
+            : scheme.surfaceContainerHighest.withValues(alpha: 0.6),
         border: Border(
           bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : scheme.outline.withValues(alpha: 0.5),
           ),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              problem.description,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.body.copyWith(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 12,
-                height: 1.5,
-              ),
+          Text(
+            problem.description,
+            style: AppTypography.body.copyWith(
+              color: contentColor.withValues(alpha: 0.85),
+              fontSize: 13,
+              height: 1.55,
             ),
           ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              onToggleHint();
-            },
-            behavior: HitTestBehavior.opaque,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              height: 28,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color: showHint
-                    ? AppColors.gold.withValues(alpha: 0.15)
-                    : Colors.white.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: showHint
-                      ? AppColors.gold.withValues(alpha: 0.4)
-                      : Colors.white.withValues(alpha: 0.08),
+          if (examples.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'EXAMPLES',
+              style: AppTypography.eyebrow.copyWith(
+                color: contentColor.withValues(alpha: 0.4),
+                fontSize: 10,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final tc in examples)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.04)
+                        : Colors.black.withValues(alpha: 0.03),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        'in  ',
+                        style: AppTypography.codeBody.copyWith(
+                          fontSize: 11,
+                          color: contentColor.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          tc.input,
+                          style: AppTypography.codeBody.copyWith(
+                            fontSize: 11,
+                            color: contentColor.withValues(alpha: 0.75),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'out ',
+                        style: AppTypography.codeBody.copyWith(
+                          fontSize: 11,
+                          color: contentColor.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      Text(
+                        tc.expectedOutput,
+                        style: AppTypography.codeBody.copyWith(
+                          fontSize: 11,
+                          color: isDark
+                              ? AppColors.codeString
+                              : const Color(0xFF059669),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              alignment: Alignment.center,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CkIcon.hint(
-                    size: 13,
-                    color: showHint
-                        ? AppColors.gold
-                        : Colors.white.withValues(alpha: 0.75),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Hint',
-                    style: AppTypography.caption.copyWith(
-                      color: showHint
-                          ? AppColors.gold
-                          : Colors.white.withValues(alpha: 0.75),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -534,7 +911,7 @@ class _HintBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.gold.withValues(alpha: 0.10),
@@ -544,7 +921,7 @@ class _HintBanner extends StatelessWidget {
       child: Text(
         text,
         style: AppTypography.body.copyWith(
-          color: Colors.white.withValues(alpha: 0.85),
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.85),
           fontSize: 12,
           height: 1.5,
         ),
@@ -560,28 +937,34 @@ class _HintBanner extends StatelessWidget {
 class _CodeCanvas extends StatelessWidget {
   final _SyntaxController controller;
   final FocusNode focus;
+  final GlobalKey textFieldKey;
 
-  const _CodeCanvas({required this.controller, required this.focus});
+  const _CodeCanvas({
+    required this.controller,
+    required this.focus,
+    required this.textFieldKey,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => focus.requestFocus(),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Gutter(controller: controller),
-          Expanded(
-            child: SingleChildScrollView(
+      child: SingleChildScrollView(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Gutter(controller: controller),
+            Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 12, 12, 12),
                 child: TextField(
+                  key: textFieldKey,
                   controller: controller,
                   focusNode: focus,
                   maxLines: null,
                   keyboardType: TextInputType.multiline,
                   style: AppTypography.codeBody.copyWith(fontSize: 13),
-                  cursorColor: Colors.white,
+                  cursorColor: Theme.of(context).colorScheme.onSurface,
                   cursorWidth: 2,
                   decoration: const InputDecoration(
                     isDense: true,
@@ -591,8 +974,8 @@ class _CodeCanvas extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -604,16 +987,22 @@ class _Gutter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gutterBg = isDark ? AppColors.codeBgAlt : const Color(0xFFEAEDF4);
+    final lineNumColor = isDark
+        ? Colors.white.withValues(alpha: 0.25)
+        : AppColors.textDisabled;
     return AnimatedBuilder(
       animation: controller,
       builder: (_, __) {
         final lines = controller.text.split('\n').length;
         return Container(
           width: 38,
-          color: AppColors.codeBgAlt,
+          color: gutterBg,
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
             children: List.generate(
               lines,
               (i) => SizedBox(
@@ -621,7 +1010,7 @@ class _Gutter extends StatelessWidget {
                 child: Text(
                   '${i + 1}',
                   style: AppTypography.codeBody.copyWith(
-                    color: Colors.white.withValues(alpha: 0.25),
+                    color: lineNumColor,
                     fontSize: 12,
                     height: 20 / 12,
                   ),
@@ -631,64 +1020,6 @@ class _Gutter extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Suggestion chips (accessory bar)
-// ═══════════════════════════════════════════════════════════════
-
-class _SuggestionBar extends StatelessWidget {
-  final List<_Snippet> suggestions;
-  final ValueChanged<_Snippet> onTap;
-
-  const _SuggestionBar({required this.suggestions, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      decoration: BoxDecoration(
-        color: AppColors.codeBgAlt,
-        border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
-        ),
-      ),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        itemCount: suggestions.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (_, i) {
-          final s = suggestions[i];
-          return GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              onTap(s);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.22),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.35),
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                s.label,
-                style: AppTypography.codeBody.copyWith(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 }
@@ -744,21 +1075,85 @@ class _FailureBanner extends StatelessWidget {
   }
 }
 
+class _RunBanner extends StatelessWidget {
+  final Map<String, dynamic> result;
+  const _RunBanner({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = result['status'] as String? ?? 'error';
+    final actual = result['actual']?.toString();
+    final error = result['error']?.toString();
+    final isOk = status == 'accepted';
+
+    String text;
+    if (error != null && error.isNotEmpty) {
+      text = error;
+    } else if (actual != null) {
+      text = 'Output: $actual';
+    } else {
+      text = isOk ? 'Test passed!' : 'Test failed';
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isOk
+            ? AppColors.successDark
+            : AppColors.gold.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: isOk
+            ? null
+            : Border.all(color: AppColors.gold.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          isOk
+              ? const CkIcon.check(size: 16, color: Colors.white)
+              : const CkIcon.run(size: 16, color: AppColors.gold),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.body.copyWith(
+                color: isOk ? Colors.white : AppColors.gold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SubmitBar extends StatelessWidget {
   final String? status;
   final bool running;
+  final bool runningTest;
   final VoidCallback onSubmit;
+  final VoidCallback onRunTest;
   final VoidCallback onViewResults;
+  final VoidCallback onDismissKeyboard;
 
   const _SubmitBar({
     required this.status,
     required this.running,
+    required this.runningTest,
     required this.onSubmit,
+    required this.onRunTest,
     required this.onViewResults,
+    required this.onDismissKeyboard,
   });
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final contentColor = isDark ? Colors.white : scheme.onSurface;
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final isPassed = status == 'passed';
     final isFailed = status == 'failed';
@@ -766,35 +1161,96 @@ class _SubmitBar extends StatelessWidget {
     return Container(
       padding: EdgeInsets.fromLTRB(12, 10, 12, 12 + bottomPad),
       decoration: BoxDecoration(
-        color: AppColors.codeBg,
+        color: isDark ? AppColors.codeBg : scheme.surface,
         border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          top: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : scheme.outline.withValues(alpha: 0.5),
+          ),
         ),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: isPassed
-                ? OwlButton.success(
-                    label: 'View Results',
-                    onPressed: onViewResults,
-                    leading: const CkIcon.chevR(size: 18, color: Colors.white),
-                  )
-                : OwlButton(
+      child: isPassed
+          ? OwlButton.success(
+              label: 'View Results',
+              onPressed: onViewResults,
+              leading: const CkIcon.chevR(size: 18, color: Colors.white),
+            )
+          : Row(
+              children: [
+                _SquareBtn(
+                  icon: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: contentColor.withValues(alpha: 0.65),
+                    size: 20,
+                  ),
+                  onTap: onDismissKeyboard,
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: (running || runningTest) ? null : onRunTest,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    height: 52,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: runningTest ? 0.04 : 0.07)
+                          : scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(AppRadius.full),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.12)
+                            : scheme.outline,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (runningTest)
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: contentColor.withValues(alpha: 0.65),
+                            ),
+                          )
+                        else
+                          CkIcon.run(
+                            size: 14,
+                            color: contentColor.withValues(alpha: 0.75),
+                          ),
+                        const SizedBox(width: 6),
+                        Text(
+                          runningTest ? 'Running…' : 'Run',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: contentColor.withValues(alpha: 0.75),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OwlButton(
                     label: running
                         ? 'Running…'
                         : isFailed
                             ? 'Try Again'
-                            : 'Run & Submit',
+                            : 'Submit',
                     isLoading: running,
                     onPressed: running ? null : onSubmit,
                     leading: running
                         ? null
-                        : const CkIcon.run(size: 16, color: Colors.white),
+                        : const CkIcon.check(size: 16, color: Colors.white),
                   ),
-          ),
-        ],
-      ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -849,19 +1305,30 @@ class _SyntaxController extends TextEditingController {
     TextStyle? style,
     required bool withComposing,
   }) {
-    final base = AppTypography.codeBody.copyWith(fontSize: 13);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final base = AppTypography.codeBody.copyWith(
+      fontSize: 13,
+      color: isDark ? AppColors.codeText : const Color(0xFF1F2937),
+    );
+    final commentColor = isDark ? AppColors.codeComment : const Color(0xFF6B7A99);
+    final stringColor = isDark ? AppColors.codeString : const Color(0xFF059669);
+    final numberColor = isDark ? AppColors.codeNumber : const Color(0xFFD97706);
+    final keywordStyle = AppTypography.codeKeyword.copyWith(
+      fontSize: 13,
+      color: isDark ? AppColors.codeKeyword : const Color(0xFF7C3AED),
+    );
     final spans = <TextSpan>[];
     for (final match in _tokenPattern.allMatches(text)) {
       final m = match.group(0)!;
       TextStyle ts;
       if (match.group(1) != null) {
-        ts = base.copyWith(color: AppColors.codeComment);
+        ts = base.copyWith(color: commentColor);
       } else if (match.group(2) != null) {
-        ts = base.copyWith(color: AppColors.codeString);
+        ts = base.copyWith(color: stringColor);
       } else if (match.group(3) != null) {
-        ts = base.copyWith(color: AppColors.codeNumber);
+        ts = base.copyWith(color: numberColor);
       } else if (match.group(4) != null && _keywords.contains(m)) {
-        ts = AppTypography.codeKeyword.copyWith(fontSize: 13);
+        ts = keywordStyle;
       } else {
         ts = base;
       }

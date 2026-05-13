@@ -8,6 +8,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/ck_icons.dart';
+import '../../core/widgets/theme_toggle.dart';
+import '../../models/user_profile.dart';
 import '../../providers/app_providers.dart';
 
 /// Redesigned profile — glass scroll header, identity block, level card,
@@ -41,6 +43,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
+    final solvedCount = ref.watch(solvedSlugsProvider).valueOrNull?.length ?? 0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -56,14 +59,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               bottom: AppSpacing.bottomNavClearance + 32,
             ),
             children: [
-              _IdentityBlock(name: user.name),
+              _IdentityBlock(user: user),
               const SizedBox(height: 20),
-              _LevelCard(xp: user.xp),
+              _LevelCard(user: user),
               const SizedBox(height: 14),
               _StatsRow(
                 streak: user.streak,
                 xp: user.xp,
-                solved: 12,
+                solved: solvedCount,
               ),
               const SizedBox(height: 20),
               _SectionLabel(label: 'This week'),
@@ -88,10 +91,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       context, ref, user.dailyGoalMinutes,
                     ),
                   ),
-                  _SettingsRow(
-                    label: 'Appearance',
-                    trailing: _themeModeLabel(ref.watch(themeModeProvider)),
-                    onTap: () => _showThemeDialog(context, ref),
+                  _AppearanceRow(
+                    value: ref.watch(themeModeProvider),
+                    onChange: (m) =>
+                        ref.read(themeModeProvider.notifier).state = m,
                   ),
                   _SettingsRow(
                     label: 'Notifications',
@@ -135,56 +138,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ],
           ),
-          _TopGlassBar(scrolled: _scrolled, name: user.name),
+          _TopGlassBar(scrolled: _scrolled, name: user.name, avatarUrl: user.avatarUrl),
         ],
       ),
-    );
-  }
-
-  String _themeModeLabel(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.light:
-        return 'Light';
-      case ThemeMode.dark:
-        return 'Dark';
-      case ThemeMode.system:
-        return 'System';
-    }
-  }
-
-  // ── Theme dialog ───────────────────────────────────────────
-  void _showThemeDialog(BuildContext context, WidgetRef ref) {
-    final current = ref.read(themeModeProvider);
-    showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return SimpleDialog(
-          title: const Text('Appearance'),
-          children: [
-            for (final entry in const [
-              (ThemeMode.light, 'Light'),
-              (ThemeMode.dark, 'Dark'),
-              (ThemeMode.system, 'System'),
-            ])
-              SimpleDialogOption(
-                onPressed: () {
-                  ref.read(themeModeProvider.notifier).state = entry.$1;
-                  Navigator.pop(ctx);
-                },
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(entry.$2, style: AppTypography.bodyLg),
-                    ),
-                    if (current == entry.$1)
-                      const CkIcon.check(
-                          size: 20, color: AppColors.primary),
-                  ],
-                ),
-              ),
-          ],
-        );
-      },
     );
   }
 
@@ -358,7 +314,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 class _TopGlassBar extends StatelessWidget {
   final bool scrolled;
   final String name;
-  const _TopGlassBar({required this.scrolled, required this.name});
+  final String? avatarUrl;
+  const _TopGlassBar({required this.scrolled, required this.name, this.avatarUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -393,7 +350,7 @@ class _TopGlassBar extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             child: Row(
               children: [
-                _Avatar(name: name, size: 32, radius: 10),
+                _Avatar(name: name, avatarUrl: avatarUrl, size: 32, radius: 10),
                 const SizedBox(width: 10),
                 Text(name, style: AppTypography.h3),
               ],
@@ -408,8 +365,25 @@ class _TopGlassBar extends StatelessWidget {
 // ── Identity block ──────────────────────────────────────────────
 
 class _IdentityBlock extends StatelessWidget {
-  final String name;
-  const _IdentityBlock({required this.name});
+  final UserProfile user;
+  const _IdentityBlock({required this.user});
+
+  String _monthName(int month) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    return months[month - 1];
+  }
+
+  String _experienceLabel(String level) {
+    switch (level) {
+      case 'none': return 'Brand new';
+      case 'intermediate': return 'Intermediate';
+      case 'advanced': return 'Advanced';
+      default: return 'Junior dev';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -417,17 +391,22 @@ class _IdentityBlock extends StatelessWidget {
     final secondary =
         isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
 
+    final d = user.createdAt;
+    final joined = d != null ? 'Joined ${_monthName(d.month)} ${d.year}' : '';
+    final level = _experienceLabel(user.experienceLevel);
+    final subtitle = joined.isEmpty ? level : '$joined · $level';
+
     return Column(
       children: [
-        _Avatar(name: name, size: 84, radius: 24),
+        _Avatar(name: user.name, avatarUrl: user.avatarUrl, size: 84, radius: 24),
         const SizedBox(height: 12),
         Text(
-          name,
+          user.name,
           style: AppTypography.display.copyWith(fontSize: 24),
         ),
         const SizedBox(height: 4),
         Text(
-          'Joined March 2026 · Junior dev',
+          subtitle,
           style: AppTypography.caption.copyWith(
             color: secondary,
             fontSize: 12,
@@ -440,11 +419,13 @@ class _IdentityBlock extends StatelessWidget {
 
 class _Avatar extends StatelessWidget {
   final String name;
+  final String? avatarUrl;
   final double size;
   final double radius;
 
   const _Avatar({
     required this.name,
+    this.avatarUrl,
     required this.size,
     required this.radius,
   });
@@ -457,8 +438,7 @@ class _Avatar extends StatelessWidget {
         .toUpperCase();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _initialsWidget(BuildContext context) {
     return Container(
       width: size,
       height: size,
@@ -489,17 +469,52 @@ class _Avatar extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Image.network(
+          avatarUrl!,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _initialsWidget(context),
+        ),
+      );
+    }
+    return _initialsWidget(context);
+  }
 }
 
 // ── Level card ──────────────────────────────────────────────────
 
+String _xpTier(int xp) {
+  if (xp < 500) return 'Novice';
+  if (xp < 1500) return 'Apprentice';
+  if (xp < 3000) return 'Junior';
+  if (xp < 6000) return 'Mid';
+  if (xp < 10000) return 'Senior';
+  return 'Expert';
+}
+
+String _focusLabel(String focus) {
+  switch (focus) {
+    case 'interview': return 'Interview prep';
+    case 'learn': return 'Learning';
+    default: return 'General';
+  }
+}
+
 class _LevelCard extends StatelessWidget {
-  final int xp;
-  const _LevelCard({required this.xp});
+  final UserProfile user;
+  const _LevelCard({required this.user});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final xp = user.xp;
     final surface = isDark ? AppColors.darkSurface : AppColors.surface;
     final surfaceAlt =
         isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt;
@@ -542,7 +557,7 @@ class _LevelCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Junior · Hashing',
+            '${_xpTier(user.xp)} · ${_focusLabel(user.focus)}',
             style: AppTypography.display.copyWith(fontSize: 22),
           ),
           const SizedBox(height: 14),
@@ -603,7 +618,7 @@ class _StatsRow extends StatelessWidget {
       children: [
         Expanded(
           child: _StatCard(
-            icon: const CkIcon.flame(size: 20, color: AppColors.gold),
+            icon: const Icon(Icons.local_fire_department_rounded, size: 20, color: AppColors.gold),
             tint: AppColors.gold,
             value: '$streak',
             label: 'Streak',
@@ -648,31 +663,20 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppColors.darkSurface : AppColors.surface;
-    final border = isDark ? AppColors.darkBorder : AppColors.border;
     final secondary =
         isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: surface,
+        color: tint.withValues(alpha: isDark ? 0.15 : 0.10),
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: border),
+        border: Border.all(color: tint.withValues(alpha: isDark ? 0.35 : 0.20)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: tint.withValues(alpha: isDark ? 0.18 : 0.12),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            alignment: Alignment.center,
-            child: icon,
-          ),
+          icon,
           const SizedBox(height: 10),
           Text(
             value,
@@ -974,7 +978,7 @@ class _AchievementTile extends StatelessWidget {
 
     final iconWidget = switch (data.glyph) {
       _GlyphKind.bolt => CkIcon.bolt(size: 24, color: tint),
-      _GlyphKind.flame => CkIcon.flame(size: 24, color: tint),
+      _GlyphKind.flame => Icon(Icons.local_fire_department_rounded, size: 24, color: tint),
       _GlyphKind.check => CkIcon.check(size: 24, color: tint),
       _GlyphKind.trophy => CkIcon.trophy(size: 24, color: tint),
     };
@@ -1025,6 +1029,44 @@ class _AchievementTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Appearance row (inline theme toggle) ──────────────────────
+
+class _AppearanceRow extends StatelessWidget {
+  final ThemeMode value;
+  final ValueChanged<ThemeMode> onChange;
+  const _AppearanceRow({required this.value, required this.onChange});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? AppColors.darkBorder : AppColors.border;
+    final primary =
+        isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: border, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Appearance',
+              style: AppTypography.bodyLg.copyWith(color: primary, fontSize: 15),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 160,
+            child: ThemeToggle(value: value, onChange: onChange),
+          ),
+        ],
       ),
     );
   }
